@@ -4,12 +4,12 @@ import java.time.Instant
 import java.util.UUID
 
 import actors.fsm.{InactiveAuction, _}
-import akka.actor.{Actor, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.UsersBid
 import cqrs.commands._
 import cqrs.events._
-import models.{Auction, Bid, BidRejectionReason}
+import models.{Auction, AuctionType, Bid, BidRejectionReason}
 import play.api.Logger
 
 import scala.reflect._
@@ -17,10 +17,52 @@ import scala.reflect._
 /**
   * Created by Francois FERRARI on 13/05/2017
   */
+
+object Test {
+  def main(args: Array[String]): Unit = {
+    Logger.info("Main is starting")
+
+    val system = ActorSystem("andycotSystem")
+    val auctionActor: ActorRef = system.actorOf(Props(new AuctionActor()), name = "auctionActor")
+
+    val (bidderAName, bidderAUUID) = ("francois", UUID.randomUUID())
+    val (sellerAName, sellerAUUID) = ("emmanuel", UUID.randomUUID())
+
+    val instantNow = Instant.now()
+
+    val auction = new Auction(
+      Some(UUID.randomUUID()), None, None, sellerAUUID,
+      UUID.randomUUID(), UUID.randomUUID(), AuctionType.AUCTION,
+      "Eiffel tower", "", 2010,
+      UUID.randomUUID(), Nil, Nil, None,
+      Nil,
+      0.10, 0.10, 0.10, None,
+      1,
+      instantNow, instantNow.plusSeconds(60 * 60 * 24),
+      true, true,
+      0, 0, 0,
+      "EUR",
+      None, Nil,
+      None, None,
+      instantNow
+    )
+
+    auctionActor ! StartAuction(auction)
+    // auctionActor ! ScheduleAuction(auction)
+    // auctionActor ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
+    auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+
+    Thread.sleep(60000)
+
+    system.terminate()
+  }
+}
+
 class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] {
   val msToExtend = 5000
 
   override def persistenceId = "auction"
+
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
   startWith(Idle, InactiveAuction)
@@ -36,6 +78,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(Idle) {
     case Event(evt: StartAuction, _) => {
+      Logger.debug(s"Idle -> Started for auction ${evt.auction.auctionId}")
       goto(Started) applying AuctionStarted(evt.auction)
     }
 
@@ -75,10 +118,12 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   // 	 #####     #    #     # #     #    #    ####### ######
   //
   when(Started) {
-    // A bid was placed on an auction not holding any bids
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty => {
+    // A bid was placed on an auction
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids => {
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
+
+      Logger.info(s"Started PlaceBid($normalizedUsersBid)")
 
       // A seller cannot bid on its own auctions
       if (normalizedUsersBid.bidderId == auction.sellerId) {
@@ -114,50 +159,11 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        stay applying BidPlaced(normalizedUsersBid)
-      }
-    }
-
-    // A bid was placed on an auction already holding at least one bid
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.nonEmpty => {
-
-      val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
-
-      // A seller cannot bid on its own auctions
-      if (normalizedUsersBid.bidderId == auction.sellerId) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
-      }
-      // Bidding on an auction whose owner is locked in not allowed
-      else if (!canReceiveBids(auction.sellerId)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
-      }
-      // Is the bidder allowed to bid ?
-      else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      }
-      // Bidding after the end time of an auction is not allowed
-      else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
-      }
-      // Bidding on an auction that has not started is not allowed
-      else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
-      }
-      // Bidding with an erroneous qty is not allowed
-      else if (normalizedUsersBid.requestedQty != 1) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
-      }
-      // Bidding for too many auctions is not allowed
-      else if (auction.stock < 1) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.NOT_ENOUGH_STOCK)
-      }
-      // Bidding below the auction's current price is not allowed
-      else if (normalizedUsersBid.bidPrice < auction.currentPrice) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.BID_BELOW_ALLOWED_MIN)
-      }
-      // Validated bid
-      else {
-        stay applying BidPlaced(normalizedUsersBid)
+        stay applying BidPlaced(normalizedUsersBid) andThen {
+          case ActiveAuction(a) if a.stock == 1 =>
+            Logger.info("sending CloseAuction")
+            self ! CloseAuction(a.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
+        }
       }
     }
 
@@ -203,15 +209,37 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         stay applying BidPlaced(normalizedUsersBid)
       }
     }
+
+    case Event(CloseAuction(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) => {
+      Logger.info("Closing Auction")
+      goto(Closed)
+    }
   }
 
-  // override def applyEvent(event: AuctionEvent, stateDataBefore: AuctionStateData): AuctionStateData = event match {
+  //
+  //
+  when(Closed) {
+    // A bid was placed on an auction
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids => {
+      stay
+    }
+  }
+
+  /**
+    *
+    * @param event
+    * @param stateDataBefore
+    * @return
+    */
   override def applyEvent(event: AuctionEvent, stateDataBefore: AuctionStateData): AuctionStateData = (event, stateDataBefore) match {
-    case (AuctionStarted(auction), InactiveAuction) => stateDataBefore.startAuction(auction)
+    case (AuctionStarted(auction), InactiveAuction) =>
+      stateDataBefore.startAuction(auction)
 
-    case (AuctionScheduled(auction), InactiveAuction) => stateDataBefore.scheduleAuction(auction)
+    case (AuctionScheduled(auction), InactiveAuction) =>
+      stateDataBefore.scheduleAuction(auction)
 
-    case (AuctionClosed(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) => stateDataBefore.closeAuction(closedBy, createdAt)
+    case (AuctionClosed(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) =>
+      stateDataBefore.closeAuction(closedBy, createdAt)
 
     case (BidPlaced(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
       // A bid was placed on an auction not holding any bids
@@ -224,6 +252,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case (BidPlaced(usersBid), ActiveAuction(auction)) if !auction.takesBids =>
       // A bid was placed on a fixed price auction
       applyBidPlacedEventOnFixedPriceAuction(event, stateDataBefore, usersBid, auction)
+
+    case (_, _) =>
+      // Unhandled case
+      stateDataBefore
   }
 
   /**
@@ -237,7 +269,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   def applyBidPlacedEventOnAuctionWithoutBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction) = {
     val (isTimeExtended, endsAt) = auction.extendIf
     /**
-      * If the auction has a reserve price and the users bid price is >= reserve_price then the current_price is raised
+      * If the auction has a reserve price and the user's bid price is >= reserve_price then the current_price is raised
       * to reach the value of the auction's reserve price. This allows a bidder who would be the sole bidder to win the auction.
       */
     val currentPrice = auction.reservePrice match {
@@ -406,7 +438,7 @@ object AuctionActor {
   /**
     * Aligns a bid price to a bid increment boundary
     *
-    *	Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
     * Ex: bidPrice=1.19 bidIncrement=0.10 -> bidPrice=1.10
     * Ex: bidPrice=1.00 bidIncrement=0.10 -> bidPrice=1.00
     *
@@ -415,6 +447,6 @@ object AuctionActor {
     * @return
     */
   def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = {
-    BigDecimal((bidPrice / bidIncrement).toInt)*bidIncrement
+    BigDecimal((bidPrice / bidIncrement).toInt) * bidIncrement
   }
 }
