@@ -50,9 +50,33 @@ case class Auction(auctionId: Option[UUID],
 
   val secondsToExtend = 5000
 
+  /**
+    *
+    * @return
+    */
   def takesBids = auctionType == AuctionType.AUCTION
+
+  /**
+    * Computes the new end time of an auction
+    * @return
+    */
   def extendIf = hasTimeExtension match {
     case true => (true, endsAt.plusSeconds(secondsToExtend))
     case false => (false, endsAt)
+  }
+
+  /**
+    * Aligns a bid price to a bid increment boundary
+    *
+    *	Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.19 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.00 bidIncrement=0.10 -> bidPrice=1.00
+    *
+    * @param bidPrice
+    * @param bidIncrement
+    * @return
+    */
+  def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = {
+    BigDecimal((bidPrice / bidIncrement).toInt)*bidIncrement
   }
 }

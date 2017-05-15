@@ -4,10 +4,10 @@ import java.time.Instant
 import java.util.UUID
 
 import actors.fsm.{InactiveAuction, _}
-import akka.actor.Actor
+import akka.actor.{Actor, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.UsersBid
-import cqrs.commands.{CloseAuction, PlaceBid, StartAuction, SuspendAuction}
+import cqrs.commands._
 import cqrs.events._
 import models.{Auction, Bid, BidRejectionReason}
 import play.api.Logger
@@ -21,7 +21,6 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   val msToExtend = 5000
 
   override def persistenceId = "auction"
-
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
   startWith(Idle, InactiveAuction)
@@ -40,7 +39,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       goto(Started) applying AuctionStarted(evt.auction)
     }
 
-    case Event(evt: AuctionScheduled, _) => {
+    case Event(evt: ScheduleAuction, _) => {
       goto(Scheduled) applying AuctionScheduled(evt.auction)
     }
   }
@@ -386,12 +385,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     */
   def normalizeUsersBid(usersBid: UsersBid, auction: Auction) = {
     usersBid.copy(
-      bidPrice = boundedBidPrice(usersBid.bidPrice, auction.bidIncrement)
+      bidPrice = AuctionActor.boundedBidPrice(usersBid.bidPrice, auction.bidIncrement)
     )
   }
-
-  // TODO Align to bidIncrement
-  def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = bidPrice
 
   def updateCurrentPriceAndBids(stateData: ActiveAuction, newCurrentPrice: BigDecimal, newBids: Seq[Bid]) = {
     stateData.auction.copy(currentPrice = newCurrentPrice, bids = newBids ++ stateData.auction.bids)
@@ -402,4 +398,23 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   // TODO implement
   def canBid(bidderId: UUID) = true // TODO implement
+}
+
+object AuctionActor {
+  def props = Props(new AuctionActor)
+
+  /**
+    * Aligns a bid price to a bid increment boundary
+    *
+    *	Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.19 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.00 bidIncrement=0.10 -> bidPrice=1.00
+    *
+    * @param bidPrice
+    * @param bidIncrement
+    * @return
+    */
+  def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = {
+    BigDecimal((bidPrice / bidIncrement).toInt)*bidIncrement
+  }
 }
