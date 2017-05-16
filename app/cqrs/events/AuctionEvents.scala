@@ -4,8 +4,9 @@ import java.time.Instant
 import java.util.UUID
 
 import cqrs.UsersBid
+import models.{Auction, CloneParameters}
 import models.BidRejectionReason.BidRejectionReason
-import models.{Auction, Bid}
+import models.Reasons.Reasons
 
 /**
   * Created by francois on 13/05/17.
@@ -18,11 +19,11 @@ case class AuctionScheduled(auction: Auction) extends AuctionEvent
 
 case class AuctionCreated(auction: Auction) extends AuctionEvent
 
-case class AuctionClosed(auctionId: UUID,
-                         closedBy: UUID,
-                         reasonId: UUID,
+case class AuctionClosed(closedBy: UUID,
+                         reasonId: Reasons,
                          comment: String,
-                         createdAt: Instant
+                         createdAt: Instant,
+                         cloneParameters: Option[CloneParameters] = None
                         ) extends AuctionEvent
 
 case class AuctionRenewed(auctionId: UUID,

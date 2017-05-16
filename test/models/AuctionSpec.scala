@@ -12,13 +12,15 @@ import org.scalatestplus.play.PlaySpec
   */
 class AuctionSpec extends PlaySpec {
 
-  val auction = Auction(None, None, None,
+  val auction = Auction(
+    UUID.randomUUID(),
+    None, None, None,
     UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
     AuctionType.AUCTION, "", "", 2017,
     UUID.randomUUID(), Nil, Nil, None, Nil,
     1.00, 1.00, 0.10, None,
-    1,
-    Instant.now(), Instant.now().plusSeconds(60*60*24*10),
+    1, 1,
+    Instant.now(), None, Instant.now().plusSeconds(60*60*24*10),
     true, false,
     0, 0, 0,
     "EUR", None, Nil, None, None,

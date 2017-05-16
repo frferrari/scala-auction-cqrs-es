@@ -3,6 +3,7 @@ package actors.fsm
 import java.time.Instant
 import java.util.UUID
 
+import cqrs.events.AuctionClosed
 import models.{Auction, Bid}
 
 /**
@@ -10,30 +11,52 @@ import models.{Auction, Bid}
   */
 sealed trait AuctionStateData {
   def startAuction(auction: Auction): AuctionStateData
+
   def scheduleAuction(auction: Auction): AuctionStateData
-  def closeAuction(closedBy: UUID, createdAt: Instant): AuctionStateData
+
+  def closeAuction(auctionClosed: AuctionClosed): AuctionStateData
+
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal): AuctionStateData
 }
 
 case object InactiveAuction extends AuctionStateData {
   def startAuction(auction: Auction): AuctionStateData = ActiveAuction(auction)
+
   def scheduleAuction(auction: Auction) = ActiveAuction(auction)
-  def closeAuction(closedBy: UUID, createdAt: Instant) = this
+
+  def closeAuction(auctionClosed: AuctionClosed) = this
+
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) = this
 }
 
 case class ActiveAuction(auction: Auction) extends AuctionStateData {
   def startAuction(auction: Auction) = this
+
   def scheduleAuction(auction: Auction) = ActiveAuction(auction)
-  def closeAuction(closedBy: UUID, createdAt: Instant) = TerminatedAuction(auction.copy(closedBy = Some(closedBy), closedAt = Some(createdAt)))
+
+  def closeAuction(ac: AuctionClosed) = {
+    val updatedAuction = auction.copy(
+      closedBy = Some(ac.closedBy),
+      originalStock = auction.stock,
+      stock = 0,
+      renewalCount = auction.renewalCount + 1,
+      cloneParameters = ac.cloneParameters
+    )
+
+    TerminatedAuction(updatedAuction)
+  }
+
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) =
     ActiveAuction(auction.copy(bids = bids ++ auction.bids, endsAt = updatedEndsAt, currentPrice = updatedCurrentPrice))
 }
 
 case class TerminatedAuction(auction: Auction) extends AuctionStateData {
   def startAuction(auction: Auction) = this
+
   def scheduleAuction(auction: Auction) = this
-  def closeAuction(closedBy: UUID, createdAt: Instant) = this
+
+  def closeAuction(auctionClosed: AuctionClosed) = this
+
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) = this
 }
 

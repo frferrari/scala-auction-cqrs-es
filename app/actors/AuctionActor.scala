@@ -9,9 +9,10 @@ import akka.persistence.fsm.PersistentFSM
 import cqrs.UsersBid
 import cqrs.commands._
 import cqrs.events._
-import models.{Auction, AuctionType, Bid, BidRejectionReason}
+import models._
 import play.api.Logger
 
+import scala.concurrent.duration._
 import scala.reflect._
 
 /**
@@ -30,16 +31,18 @@ object Test {
 
     val instantNow = Instant.now()
 
-    val auction = new Auction(
-      Some(UUID.randomUUID()), None, None, sellerAUUID,
+    val auction = Auction(
+      UUID.randomUUID(),
+      None, None, None,
+      sellerAUUID,
       UUID.randomUUID(), UUID.randomUUID(), AuctionType.AUCTION,
       "Eiffel tower", "", 2010,
       UUID.randomUUID(), Nil, Nil, None,
       Nil,
       0.10, 0.10, 0.10, None,
-      1,
-      instantNow, instantNow.plusSeconds(60 * 60 * 24),
-      true, true,
+      1, 1,
+      instantNow.plusSeconds(30), None, instantNow.plusSeconds(60 * 60 * 24),
+      hasAutomaticRenewal = true, hasTimeExtension = true,
       0, 0, 0,
       "EUR",
       None, Nil,
@@ -47,7 +50,7 @@ object Test {
       instantNow
     )
 
-    auctionActor ! StartAuction(auction)
+    auctionActor ! ScheduleAuction(auction)
     // auctionActor ! ScheduleAuction(auction)
     // auctionActor ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
     auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
@@ -77,14 +80,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   // 	  ###   ######  ####### #######
   //
   when(Idle) {
-    case Event(evt: StartAuction, _) => {
-      Logger.debug(s"Idle -> Started for auction ${evt.auction.auctionId}")
+    case Event(evt: StartAuction, _) =>
       goto(Started) applying AuctionStarted(evt.auction)
-    }
 
-    case Event(evt: ScheduleAuction, _) => {
-      goto(Scheduled) applying AuctionScheduled(evt.auction)
-    }
+    case Event(evt: ScheduleAuction, _) =>
+      goto(Scheduled) applying AuctionScheduled(evt.auction) andThen {
+        case ActiveAuction(auction) => startTimer(auction)
+      }
   }
 
   //
@@ -97,15 +99,14 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   // 	 #####   #####  #     # ####### ######   #####  ####### ####### ######
   //
   when(Scheduled) {
-    case Event(evt: StartAuction, _) => {
+    case Event(evt: StartAuction, _) =>
       goto(Started) applying AuctionStarted(evt.auction)
-    }
-    case Event(evt: CloseAuction, _) => {
-      goto(Closed) applying AuctionClosed(evt.auctionId, evt.closedBy, evt.reasonId, evt.comment, evt.createdAt)
-    }
-    case Event(evt: SuspendAuction, _) => {
+
+    case Event(evt: CloseAuction, _) =>
+      goto(Closed) applying AuctionClosed(evt.closedBy, evt.reasonId, evt.comment, evt.createdAt)
+
+    case Event(evt: SuspendAuction, _) =>
       goto(Suspended) applying AuctionSuspended(evt.auctionId, evt.suspendedBy, evt.createdAt)
-    }
   }
 
   //
@@ -119,7 +120,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(Started) {
     // A bid was placed on an auction
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids => {
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids =>
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
@@ -159,16 +160,15 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        stay applying BidPlaced(normalizedUsersBid) andThen {
-          case ActiveAuction(a) if a.stock == 1 =>
-            Logger.info("sending CloseAuction")
-            self ! CloseAuction(a.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
-        }
+        stay applying BidPlaced(normalizedUsersBid)
+        //        andThen {
+        //          case ActiveAuction(a) if a.stock == 1 =>
+        //            self ! CloseAuction(a.auctionId, UUID.randomUUID(), UUID.randomUUID(), "Closed for tests", Instant.now())
+        //        }
       }
-    }
 
     // A bid was placed on a fixed price auction
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if !auction.takesBids => {
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if !auction.takesBids =>
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
@@ -208,27 +208,63 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       else {
         stay applying BidPlaced(normalizedUsersBid)
       }
-    }
 
-    case Event(CloseAuction(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) => {
-      Logger.info("Closing Auction")
-      goto(Closed)
-    }
+    case Event(CloseAuction(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) =>
+      goto(Closed) applying AuctionClosed(closedBy, reasonId, comment, createdAt)
+  }
+
+  //
+  // 	 #####  #       #######  #####  ####### ######
+  // 	#     # #       #     # #     # #       #     #
+  // 	#       #       #     # #       #       #     #
+  // 	#       #       #     #  #####  #####   #     #
+  // 	#       #       #     #       # #       #     #
+  // 	#     # #       #     # #     # #       #     #
+  // 	 #####  ####### #######  #####  ####### ######
+  //
+  when(Closed) {
+    // A bid was placed on an auction
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids =>
+      stay
+  }
+
+  //
+  // 	 #####  #     #  #####  ######  ####### #     # ######  ####### ######
+  // 	#     # #     # #     # #     # #       ##    # #     # #       #     #
+  // 	#       #     # #       #     # #       # #   # #     # #       #     #
+  // 	 #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
+  // 	      # #     #       # #       #       #   # # #     # #       #     #
+  // 	#     # #     # #     # #       #       #    ## #     # #       #     #
+  // 	 #####   #####   #####  #       ####### #     # ######  ####### ######
+  //
+  when(Suspended) {
+    case Event(ResumeAuction(auctionId, resumedBy, startsAt, endsAt, createdAt), ActiveAuction(auction)) if auction.bids.isEmpty =>
+      val updatedAuction = auction.copy(suspendedAt = None, startsAt = startsAt, endsAt = endsAt, renewalCount = auction.renewalCount + 1)
+      if (startsAt.isAfter(Instant.now())) {
+        goto(Scheduled) applying AuctionScheduled(updatedAuction)
+      } else {
+        goto(Started) applying AuctionStarted(updatedAuction)
+      }
+
+    case Event(ResumeAuction(auctionId, resumedBy, startsAt, endsAt, createdAt), ActiveAuction(auction)) if auction.bids.nonEmpty =>
+      // The current auction is CLOSED and a cloned auction will be created (cloneParameters)
+      // TODO Clone the auction, HOW ? andThen ?
+      val cloneParameters = CloneParameters(auction.stock, auction.startsAt, auction.endsAt)
+      goto(Closed) applying AuctionClosed(getSystemUserId, Reasons.RESUMED_WITH_BIDS, "", Instant.now(), Some(cloneParameters))
   }
 
   //
   //
-  when(Closed) {
-    // A bid was placed on an auction
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids => {
-      stay
-    }
+  //
+  onTransition {
+    case from -> to =>
+      Logger.info(s"Transitioning from $from to $to")
   }
 
   /**
     *
-    * @param event
-    * @param stateDataBefore
+    * @param event The event to apply
+    * @param stateDataBefore The state data before any modification
     * @return
     */
   override def applyEvent(event: AuctionEvent, stateDataBefore: AuctionStateData): AuctionStateData = (event, stateDataBefore) match {
@@ -237,9 +273,6 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
     case (AuctionScheduled(auction), InactiveAuction) =>
       stateDataBefore.scheduleAuction(auction)
-
-    case (AuctionClosed(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) =>
-      stateDataBefore.closeAuction(closedBy, createdAt)
 
     case (BidPlaced(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
       // A bid was placed on an auction not holding any bids
@@ -253,6 +286,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // A bid was placed on a fixed price auction
       applyBidPlacedEventOnFixedPriceAuction(event, stateDataBefore, usersBid, auction)
 
+    case (ac@AuctionClosed(closedBy, reasonId, comment, createdAt, Some(cloneParameters)), ActiveAuction(auction)) =>
+      stateDataBefore.closeAuction(ac)
+
     case (_, _) =>
       // Unhandled case
       stateDataBefore
@@ -260,13 +296,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   /**
     *
-    * @param event
-    * @param stateDataBefore
-    * @param usersBid
-    * @param auction
+    * @param event The event to apply
+    * @param stateDataBefore The state data before applying the event
+    * @param usersBid The user's bid
+    * @param auction The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnAuctionWithoutBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction) = {
+  def applyBidPlacedEventOnAuctionWithoutBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
     val (isTimeExtended, endsAt) = auction.extendIf
     /**
       * If the auction has a reserve price and the user's bid price is >= reserve_price then the current_price is raised
@@ -276,20 +312,20 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       case Some(reservePrice) if usersBid.bidPrice >= reservePrice => reservePrice
       case _ => auction.currentPrice
     }
-    val bid = Bid(usersBid, true, false, isTimeExtended, currentPrice)
+    val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
 
     stateDataBefore.placeBids(List(bid), endsAt, currentPrice)
   }
 
   /**
     *
-    * @param event
-    * @param stateDataBefore
-    * @param usersBid
-    * @param auction
+    * @param event The event to apply
+    * @param stateDataBefore The state data before applying the event
+    * @param usersBid The users bid
+    * @param auction The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnAuctionWithBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction) = {
+  def applyBidPlacedEventOnAuctionWithBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
     val highestBid: Bid = auction.bids.head
     val (isTimeExtended, endsAt) = auction.extendIf
 
@@ -299,7 +335,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         * The auction's current price doesn't change, and the new bid isn't visible
         */
       val currentPrice = auction.currentPrice
-      val bid = Bid(usersBid, false, false, isTimeExtended, currentPrice)
+      val bid = Bid(usersBid, isVisible = false, isAuto = false, isTimeExtended, currentPrice)
 
       stateDataBefore.placeBids(List(bid), endsAt, currentPrice)
     }
@@ -320,7 +356,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       else
         (false, auction.currentPrice)
 
-      val bid = Bid(usersBid, isBidVisible, false, isTimeExtended, currentPrice)
+      val bid = Bid(usersBid, isBidVisible, isAuto = false, isTimeExtended, currentPrice)
 
       stateDataBefore.placeBids(List(bid), endsAt, currentPrice)
     }
@@ -332,7 +368,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         * user's bid price
         */
       val currentPrice = usersBid.bidPrice
-      val bid = Bid(usersBid, true, false, isTimeExtended, currentPrice)
+      val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
       val updatedHighestBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = currentPrice)
 
       stateDataBefore.placeBids(List(updatedHighestBid, bid), endsAt, currentPrice)
@@ -350,7 +386,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         case _ => highestBid.bidMaxPrice + auction.bidIncrement
       }
 
-      val newHighestBid = Bid(usersBid, true, false, isTimeExtended, currentPrice)
+      val newHighestBid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
 
       /**
         * We don't generate an automatic bid for the current highest bidder if the auction's price has already reached
@@ -368,20 +404,20 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   /**
     *
-    * @param event
-    * @param stateDataBefore
-    * @param usersBid
-    * @param auction
+    * @param event The event to apply
+    * @param stateDataBefore The state data before applying the event
+    * @param usersBid The users's bid
+    * @param auction The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnFixedPriceAuction(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction) = {
+  def applyBidPlacedEventOnFixedPriceAuction(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
     val (isTimeExtended, endsAt) = auction.extendIf
     val currentPrice = auction.currentPrice
 
     auction.stock - usersBid.requestedQty match {
       case stock if stock == 0 =>
         Logger.info(s"Auction {auction.auctionId} sold for a qty of #{usersBid.requestedQty}, no remaining stock")
-        val bid = Bid(usersBid, true, false, isTimeExtended, usersBid.bidPrice)
+        val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, usersBid.bidPrice)
         /* TODO
         %FsmAuctionData{fsm_data | 	closed_by: nil,
                                     original_stock: event.requested_qty,
@@ -393,7 +429,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
       case _ =>
         Logger.info(s"Auction {auction.auctionId} sold for a qty of #{usersBid.requestedQty}, remaining stock is #{stock}, duplicate the auction")
-        val bid = Bid(usersBid, true, false, isTimeExtended, usersBid.bidPrice)
+        val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, usersBid.bidPrice)
         /* TODO Handle duplication
           %FsmAuctionData{fsm_data | 	closed_by: nil,
                                       original_stock: event.requested_qty,
@@ -411,17 +447,17 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   /**
     * Aligns the users's bid price to the auction's bidIncrement boundaries
     *
-    * @param usersBid
-    * @param auction
+    * @param usersBid The users's bid
+    * @param auction The auction to normalize
     * @return
     */
-  def normalizeUsersBid(usersBid: UsersBid, auction: Auction) = {
+  def normalizeUsersBid(usersBid: UsersBid, auction: Auction): UsersBid = {
     usersBid.copy(
       bidPrice = AuctionActor.boundedBidPrice(usersBid.bidPrice, auction.bidIncrement)
     )
   }
 
-  def updateCurrentPriceAndBids(stateData: ActiveAuction, newCurrentPrice: BigDecimal, newBids: Seq[Bid]) = {
+  def updateCurrentPriceAndBids(stateData: ActiveAuction, newCurrentPrice: BigDecimal, newBids: Seq[Bid]): Auction = {
     stateData.auction.copy(currentPrice = newCurrentPrice, bids = newBids ++ stateData.auction.bids)
   }
 
@@ -430,6 +466,37 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   // TODO implement
   def canBid(bidderId: UUID) = true // TODO implement
+
+  /**
+    * Get a unique timer name for a given auction
+    *
+    * @param auction The auction for which to generate a time name
+    * @return
+    */
+  def getTimerName(auction: Auction): String = s"timer-${auction.auctionId}"
+
+  /**
+    * Starts a timer that will send a StartAuction message at the startsAt time of a given auction
+    * The timer is started immediatly if the startsAt is in the past
+    *
+    * @param auction The auction to start a timer on
+    * @return The time name
+    */
+  def startTimer(auction: Auction): String = {
+    // TODO Check if it is needed to control whether or not the auction is closed (closedBy, closedAt ...)
+    //      If the startsAt is in the past, then realign startsAt/endsAt based on now()
+    val secondsToWait = auction.startsAt.getEpochSecond - Instant.now().getEpochSecond match {
+      case stw if stw >= 0 => stw
+      case _ => 0
+    }
+
+    val timerName = getTimerName(auction)
+    setTimer(getTimerName(auction), StartAuction(auction), secondsToWait.seconds, repeat = false)
+    timerName
+  }
+
+  // TODO Implement this function
+  def getSystemUserId: UUID = UUID.randomUUID()
 }
 
 object AuctionActor {
@@ -442,11 +509,11 @@ object AuctionActor {
     * Ex: bidPrice=1.19 bidIncrement=0.10 -> bidPrice=1.10
     * Ex: bidPrice=1.00 bidIncrement=0.10 -> bidPrice=1.00
     *
-    * @param bidPrice
-    * @param bidIncrement
+    * @param bidPrice The bid price
+    * @param bidIncrement The bid increment
     * @return
     */
-  def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = {
+  def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal): BigDecimal = {
     BigDecimal((bidPrice / bidIncrement).toInt) * bidIncrement
   }
 }

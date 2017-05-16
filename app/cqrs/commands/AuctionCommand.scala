@@ -4,7 +4,8 @@ import java.time.Instant
 import java.util.UUID
 
 import cqrs.UsersBid
-import models.{Auction, Bid}
+import models.Auction
+import models.Reasons.Reasons
 
 /**
   * Created by francois on 13/05/17.
@@ -21,7 +22,7 @@ case class PlaceBid(bidPayload: UsersBid) extends AuctionCommand
 
 case class CloseAuction(auctionId: UUID,
                         closedBy: UUID,
-                        reasonId: UUID,
+                        reasonId: Reasons,
                         comment: String,
                         createdAt: Instant
                        ) extends AuctionCommand

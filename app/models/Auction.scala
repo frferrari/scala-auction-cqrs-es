@@ -13,9 +13,12 @@ object AuctionType extends Enumeration {
   val AUCTION, FIXED_PRICE = Value
 }
 
-case class Auction(auctionId: Option[UUID],
+case class CloneParameters(stock: Int, startsAt: Instant, endsAt: Instant)
+
+case class Auction(auctionId: UUID,
                    clonedFromAuctionId: Option[UUID],
                    clonedToAuctionId: Option[UUID],
+                   cloneParameters: Option[CloneParameters],
                    sellerId: UUID,
                    typeId: UUID,
                    listedTimeId: UUID,
@@ -33,7 +36,9 @@ case class Auction(auctionId: Option[UUID],
                    bidIncrement: BigDecimal,
                    reservePrice: Option[BigDecimal],
                    stock: Int,
+                   originalStock: Int,
                    startsAt: Instant,
+                   suspendedAt: Option[Instant],
                    endsAt: Instant,
                    hasAutomaticRenewal: Boolean,
                    hasTimeExtension: Boolean,
@@ -48,6 +53,7 @@ case class Auction(auctionId: Option[UUID],
                    createdAt: Instant
                   ) {
 
+
   val secondsToExtend = 5000
 
   /**
@@ -58,6 +64,7 @@ case class Auction(auctionId: Option[UUID],
 
   /**
     * Computes the new end time of an auction
+    *
     * @return
     */
   def extendIf = hasTimeExtension match {
@@ -68,7 +75,7 @@ case class Auction(auctionId: Option[UUID],
   /**
     * Aligns a bid price to a bid increment boundary
     *
-    *	Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
+    * Ex: bidPrice=1.14 bidIncrement=0.10 -> bidPrice=1.10
     * Ex: bidPrice=1.19 bidIncrement=0.10 -> bidPrice=1.10
     * Ex: bidPrice=1.00 bidIncrement=0.10 -> bidPrice=1.00
     *
@@ -77,6 +84,6 @@ case class Auction(auctionId: Option[UUID],
     * @return
     */
   def boundedBidPrice(bidPrice: BigDecimal, bidIncrement: BigDecimal) = {
-    BigDecimal((bidPrice / bidIncrement).toInt)*bidIncrement
+    BigDecimal((bidPrice / bidIncrement).toInt) * bidIncrement
   }
 }
