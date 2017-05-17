@@ -7,23 +7,23 @@ import akka.persistence.fsm.PersistentFSM.FSMState
   */
 sealed trait AuctionState extends FSMState
 
-case object Idle extends AuctionState {
+case object IdleState extends AuctionState {
   override def identifier: String = "Idle"
 }
 
-case object Scheduled extends AuctionState {
+case object ScheduledState extends AuctionState {
   override def identifier: String = "Scheduled"
 }
 
-case object Started extends AuctionState {
+case object StartedState extends AuctionState {
   override def identifier: String = "Started"
 }
 
-case object Closed extends AuctionState {
+case object ClosedState extends AuctionState {
   override def identifier: String = "Closed"
 }
 
-case object Suspended extends AuctionState {
+case object SuspendedState extends AuctionState {
   override def identifier: String = "Suspended"
 }
 

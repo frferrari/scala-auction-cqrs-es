@@ -5,6 +5,7 @@ import java.util.UUID
 
 import cqrs.events.AuctionClosed
 import models.{Auction, Bid}
+import play.api.Logger
 
 /**
   * Created by Francois FERRARI on 13/05/2017
@@ -16,7 +17,7 @@ sealed trait AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed): AuctionStateData
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal): AuctionStateData
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]): AuctionStateData
 }
 
 case object InactiveAuction extends AuctionStateData {
@@ -26,7 +27,7 @@ case object InactiveAuction extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) = this
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = this
 }
 
 case class ActiveAuction(auction: Auction) extends AuctionStateData {
@@ -46,8 +47,21 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
     TerminatedAuction(updatedAuction)
   }
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) =
-    ActiveAuction(auction.copy(bids = bids ++ auction.bids, endsAt = updatedEndsAt, currentPrice = updatedCurrentPrice))
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = {
+    val r = ActiveAuction(
+      auction.copy(
+        bids = bids ++ auction.bids,
+        endsAt = updatedEndsAt,
+        currentPrice = updatedCurrentPrice,
+        stock = updatedStock,
+        originalStock = updatedOriginalStock,
+        closedBy = updatedClosedBy
+      )
+    )
+
+    Logger.info(s"***************** $r ----- ${r.auction.stock}")
+    r
+  }
 }
 
 case class TerminatedAuction(auction: Auction) extends AuctionStateData {
@@ -57,7 +71,7 @@ case class TerminatedAuction(auction: Auction) extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal) = this
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = this
 }
 
 //case class AuctionStateData(auctionId: UUID,

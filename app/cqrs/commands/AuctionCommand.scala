@@ -15,6 +15,7 @@ sealed trait AuctionCommand
 case class CreateAuction(auction: Auction) extends AuctionCommand
 
 case class StartAuction(auction: Auction) extends AuctionCommand
+case class StartAuctionByTimer(auction: Auction) extends AuctionCommand
 
 case class ScheduleAuction(auction: Auction) extends AuctionCommand
 
