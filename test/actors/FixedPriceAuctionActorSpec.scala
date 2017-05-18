@@ -88,6 +88,9 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
       }
     }
 
+    // TODO Bid on a seller's account locked
+    // TODO Bid on a bidder's account locked
+
     "reject a bid with a quantity lower than 1" in {
       auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 0, auction.currentPrice, Instant.now()))
       expectMsgPF(10.seconds) {
@@ -120,6 +123,8 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
         case BidRejectedReply(_, BidRejectionReason.AUCTION_HAS_ENDED) => ()
       }
     }
+
+    // TODO ADD tests to check if a new auction has been created with the remaining stock
 
 //    "NOT be CLOSED after receiving a bid for a quantity lower than the available stock" in {
 //      val auctionActor = AuctionActor.createAuctionActor()

@@ -135,35 +135,35 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
       // A seller cannot bid on its own auctions
       if (normalizedUsersBid.bidderId == auction.sellerId) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
       }
       // Bidding on an auction whose owner is locked in not allowed
       else if (!canReceiveBids(auction.sellerId)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
       // Is the bidder allowed to bid ?
       else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
       }
       // Bidding after the end time of an auction is not allowed
       else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
       }
       // Bidding on an auction that has not started is not allowed
       else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
       }
       // Bidding with an erroneous qty is not allowed
       else if (normalizedUsersBid.requestedQty != 1) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
       }
       // Bidding for too many auctions is not allowed
       else if (auction.stock < 1) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.NOT_ENOUGH_STOCK)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.NOT_ENOUGH_STOCK)
       }
       // Bidding below the auction's current price is not allowed
       else if (normalizedUsersBid.bidPrice < auction.currentPrice) {
-        stay applying BidRejected(normalizedUsersBid, BidRejectionReason.BID_BELOW_ALLOWED_MIN)
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BID_BELOW_ALLOWED_MIN)
       }
       // Validated bid
       else {

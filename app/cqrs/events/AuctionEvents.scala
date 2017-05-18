@@ -56,7 +56,7 @@ case class AuctionSold(auctionId: UUID,
 
 case class BidPlaced(bidPayload: UsersBid) extends AuctionEvent
 
-case class BidRejected(bidPayload: UsersBid, rejectionReason: BidRejectionReason) extends AuctionEvent
+// case class BidRejected(bidPayload: UsersBid, rejectionReason: BidRejectionReason) extends AuctionEvent
 
 case class CancelRejected(auctionId: UUID,
                           cancelledBy: UUID,

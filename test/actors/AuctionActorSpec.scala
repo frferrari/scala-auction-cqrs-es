@@ -27,7 +27,7 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  val scheduledAuction = Auction(
+  def getScheduledAuction = Auction(
     UUID.randomUUID(),
     None, None, None,
     sellerAUUID,
@@ -47,11 +47,49 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
     instantNow
   )
 
-  "An Auction Actor" must {
+  "A scheduled AUCTION" should {
+
+    val auctionActor = AuctionActor.createAuctionActor()
+    val auction = getScheduledAuction
+    auctionActor ! ScheduleAuction(auction)
+
+    "reject a bid on an auction not yet started" in {
+      expectMsg(AuctionScheduledReply)
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice, Instant.now()))
+      expectMsgPF() {
+        case BidRejectedReply(_, BidRejectionReason.AUCTION_NOT_YET_STARTED) => ()
+      }
+    }
+
+    "reject a bid made by it's owner" in {
+      expectNoMsg(10.seconds) // Let the auction start
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), sellerAName, sellerAUUID, auction.stock, auction.currentPrice, Instant.now()))
+      expectMsgPF(10.seconds) {
+        case BidRejectedReply(_, BidRejectionReason.SELF_BIDDING) => ()
+      }
+    }
+
+    // TODO Bid on a seller's account locked
+    // TODO Bid on a bidder's account locked
+
+    "reject a bid with a quantity lower than 1" in {
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 0, auction.currentPrice, Instant.now()))
+      expectMsgPF(10.seconds) {
+        case BidRejectedReply(_, BidRejectionReason.WRONG_REQUESTED_QTY) => ()
+      }
+    }
+
+    "reject a bid with a price lower than the auction's current price" in {
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice-0.01, Instant.now()))
+      expectMsgPF(10.seconds) {
+        case BidRejectedReply(_, BidRejectionReason.BID_BELOW_ALLOWED_MIN) => ()
+      }
+    }
+
     "accept a bid" in {
       val auctionActor = AuctionActor.createAuctionActor()
 
-      auctionActor ! ScheduleAuction(scheduledAuction)
+      auctionActor ! ScheduleAuction(auction)
       expectMsg(AuctionScheduledReply)
       expectNoMsg(10.seconds) // Let the auction start
       auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
