@@ -48,7 +48,7 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
   }
 
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = {
-    val r = ActiveAuction(
+    ActiveAuction(
       auction.copy(
         bids = bids ++ auction.bids,
         endsAt = updatedEndsAt,
@@ -58,9 +58,6 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
         closedBy = updatedClosedBy
       )
     )
-
-    Logger.info(s"***************** $r ----- ${r.auction.stock}")
-    r
   }
 }
 

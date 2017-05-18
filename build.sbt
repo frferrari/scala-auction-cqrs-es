@@ -11,6 +11,8 @@ scalaVersion := "2.11.11"
 
 // Testing persistent actors http://tudorzgureanu.com/akka-persistence-testing-persistent-actors/
 
+parallelExecution in Test := false
+
 resolvers += Resolver.jcenterRepo
 
 libraryDependencies ++= Seq(
