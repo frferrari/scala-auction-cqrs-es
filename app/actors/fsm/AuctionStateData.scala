@@ -44,24 +44,25 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
       cloneParameters = ac.cloneParameters
     )
 
-    TerminatedAuction(updatedAuction)
+    FinishedAuction(updatedAuction)
   }
 
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = {
-    ActiveAuction(
-      auction.copy(
-        bids = bids ++ auction.bids,
-        endsAt = updatedEndsAt,
-        currentPrice = updatedCurrentPrice,
-        stock = updatedStock,
-        originalStock = updatedOriginalStock,
-        closedBy = updatedClosedBy
-      )
+    val updatedAuction = auction.copy(
+      bids = bids ++ auction.bids,
+      endsAt = updatedEndsAt,
+      currentPrice = updatedCurrentPrice,
+      stock = updatedStock,
+      originalStock = updatedOriginalStock,
+      closedBy = updatedClosedBy
     )
+
+    if (updatedStock == 0) ActiveAuction(updatedAuction)
+    else FinishedAuction(updatedAuction)
   }
 }
 
-case class TerminatedAuction(auction: Auction) extends AuctionStateData {
+case class FinishedAuction(auction: Auction) extends AuctionStateData {
   def startAuction(auction: Auction) = this
 
   def scheduleAuction(auction: Auction) = this

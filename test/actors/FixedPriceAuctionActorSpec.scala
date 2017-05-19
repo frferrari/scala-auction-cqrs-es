@@ -8,7 +8,7 @@ import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
 import cqrs.commands.{PlaceBid, ScheduleAuction}
-import models.{Auction, AuctionType, BidRejectionReason}
+import models.{Auction, AuctionReason, AuctionType, BidRejectionReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 import scala.concurrent.duration._
@@ -99,26 +99,30 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
     }
 
     "reject a bid with a quantity higher than the available stock" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock+1, auction.currentPrice, Instant.now()))
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock + 1, auction.currentPrice, Instant.now()))
       expectMsgPF(10.seconds) {
         case BidRejectedReply(_, BidRejectionReason.NOT_ENOUGH_STOCK) => ()
       }
     }
 
     "reject a bid with a price different from the auction's current price" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice+1.0, Instant.now()))
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice + 1.0, Instant.now()))
       expectMsgPF(10.seconds) {
         case BidRejectedReply(_, BidRejectionReason.WRONG_BID_PRICE) => ()
       }
     }
 
-    "accept a bid with a qty lower than the auction's available stock, close the current auction and create another one with the remaining stock" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, auction.currentPrice, Instant.now()))
-      expectMsg(10.seconds, BidPlacedReply)
+    "accept a bid of the auction's stock value and close the auction" in {
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice, Instant.now()))
+      expectMsgPF(10.seconds) {
+        case AuctionClosedReply(AuctionReason.BID_NO_REMAINING_STOCK) => ()
+      }
     }
 
-    "be CLOSED from the previous step" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock-1, auction.currentPrice, Instant.now()))
+    // TODO "accept a bid with a qty lower than the auction's available stock, close the current auction and create another one with the remaining stock" in {
+
+    "reject a bid placed on a closed auction" in {
+      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, auction.stock, auction.currentPrice, Instant.now()))
       expectMsgPF() {
         case BidRejectedReply(_, BidRejectionReason.AUCTION_HAS_ENDED) => ()
       }
@@ -126,14 +130,14 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
 
     // TODO ADD tests to check if a new auction has been created with the remaining stock
 
-//    "NOT be CLOSED after receiving a bid for a quantity lower than the available stock" in {
-//      val auctionActor = AuctionActor.createAuctionActor()
-//      val scheduledFixedPriceAuction = getScheduledFixedPriceAuction
-//
-//      auctionActor ! ScheduleAuction(scheduledFixedPriceAuction)
-//      expectNoMsg(10.seconds)
-//      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, scheduledFixedPriceAuction.stock-1, scheduledFixedPriceAuction.currentPrice, Instant.now()))
-//      expectMsg(10.seconds, BidPlacedReply)
-//    }
+    //    "NOT be CLOSED after receiving a bid for a quantity lower than the available stock" in {
+    //      val auctionActor = AuctionActor.createAuctionActor()
+    //      val scheduledFixedPriceAuction = getScheduledFixedPriceAuction
+    //
+    //      auctionActor ! ScheduleAuction(scheduledFixedPriceAuction)
+    //      expectNoMsg(10.seconds)
+    //      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, scheduledFixedPriceAuction.stock-1, scheduledFixedPriceAuction.currentPrice, Instant.now()))
+    //      expectMsg(10.seconds, BidPlacedReply)
+    //    }
   }
 }

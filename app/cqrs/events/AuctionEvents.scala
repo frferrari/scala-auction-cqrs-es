@@ -4,9 +4,9 @@ import java.time.Instant
 import java.util.UUID
 
 import cqrs.UsersBid
+import cqrs.commands.CloseAuction
+import models.AuctionReason.AuctionReason
 import models.{Auction, CloneParameters}
-import models.BidRejectionReason.BidRejectionReason
-import models.Reasons.Reasons
 
 /**
   * Created by francois on 13/05/17.
@@ -19,12 +19,17 @@ case class AuctionScheduled(auction: Auction) extends AuctionEvent
 
 case class AuctionCreated(auction: Auction) extends AuctionEvent
 
-case class AuctionClosed(closedBy: UUID,
-                         reasonId: Reasons,
+case class AuctionClosed(auctionId: UUID,
+                         closedBy: UUID,
+                         reason: AuctionReason,
                          comment: String,
                          createdAt: Instant,
                          cloneParameters: Option[CloneParameters] = None
                         ) extends AuctionEvent
+
+object AuctionClosed {
+  def apply(cmd: CloseAuction) = new AuctionClosed(cmd.auctionId, cmd.closedBy, cmd.reason, cmd.comment, cmd.createdAt)
+}
 
 case class AuctionRenewed(auctionId: UUID,
                           startsAt: Instant,
@@ -60,31 +65,31 @@ case class BidPlaced(bidPayload: UsersBid) extends AuctionEvent
 
 case class CancelRejected(auctionId: UUID,
                           cancelledBy: UUID,
-                          reasonId: UUID,
+                          reason: AuctionReason,
                           createdAt: Instant
                          ) extends AuctionEvent
 
 case class CloseRejected(auctionId: UUID,
                          closedBy: UUID,
-                         reasonId: UUID,
+                         reason: AuctionReason,
                          createdAt: Instant
                         ) extends AuctionEvent
 
 case class SuspendRejected(auctionId: UUID,
                            suspendedBy: UUID,
-                           reasonId: UUID,
+                           reason: AuctionReason,
                            createdAt: Instant
                           ) extends AuctionEvent
 
 case class RenewRejected(auctionId: UUID,
                          renewedBy: UUID,
-                         reasonId: UUID,
+                         reason: AuctionReason,
                          createdAt: Instant
                         ) extends AuctionEvent
 
 case class ResumeRejected(auctionId: UUID,
                           resumedBy: UUID,
-                          reasonId: UUID,
+                          reason: AuctionReason,
                           createdAt: Instant
                          ) extends AuctionEvent
 
@@ -112,6 +117,6 @@ case class AuctionUnwatched(userId: UUID,
 
 case class WatchRejected(userId: UUID,
                          auctionId: UUID,
-                         reasonId: UUID,
+                         reason: AuctionReason,
                          watchedAt: Instant
                         ) extends AuctionEvent

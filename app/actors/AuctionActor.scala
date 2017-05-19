@@ -10,6 +10,7 @@ import akka.persistence.fsm.PersistentFSM
 import cqrs.UsersBid
 import cqrs.commands._
 import cqrs.events._
+import models.AuctionReason.AuctionReason
 import models.BidRejectionReason.BidRejectionReason
 import models._
 import play.api.Logger
@@ -112,10 +113,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
 
     case Event(evt: CloseAuction, _) =>
-      goto(ClosedState) applying AuctionClosed(evt.closedBy, evt.reasonId, evt.comment, evt.createdAt) replying AuctionClosedReply
+      goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
 
     case Event(evt: SuspendAuction, _) =>
-      goto(SuspendedState) applying AuctionSuspended(evt.auctionId, evt.suspendedBy, evt.createdAt) replying AuctionSuspendedReply
+      goto(SuspendedState) applying AuctionSuspended(evt.auctionId, evt.suspendedBy, evt.createdAt) replying AuctionSuspendedReply(evt.reason)
   }
 
   //
@@ -214,14 +215,20 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        if (auction.stock - normalizedUsersBid.requestedQty > 0)
-          goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying BidPlacedReply
-        else
-          goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying AuctionClosedReply
-      }
+        auction.stock - normalizedUsersBid.requestedQty match {
+          case remainingStock if remainingStock > 0 =>
+            goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
+              case ActiveAuction(updatedAuction) =>
+                // Clone the auction
+                context.parent ! CloneAuction(updatedAuction, remainingStock, Instant.now())
+            }
 
-    case Event(CloseAuction(auctionId, closedBy, reasonId, comment, createdAt), ActiveAuction(auction)) =>
-      goto(ClosedState) applying AuctionClosed(closedBy, reasonId, comment, createdAt)
+          case remainingStock =>
+            goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying AuctionClosedReply(AuctionReason.BID_NO_REMAINING_STOCK)
+        }
+      }
+    case Event(evt: CloseAuction, ActiveAuction(_)) =>
+      goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
   }
 
   //
@@ -235,7 +242,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(ClosedState) {
     // A bid was placed on an auction
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) =>
+    case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_HAS_ENDED)
   }
 
@@ -261,7 +268,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // The current auction is CLOSED and a cloned auction will be created (cloneParameters)
       // TODO Clone the auction, HOW ? andThen ?
       val cloneParameters = CloneParameters(auction.stock, auction.startsAt, auction.endsAt)
-      goto(ClosedState) applying AuctionClosed(getSystemUserId, Reasons.RESUMED_WITH_BIDS, "", Instant.now(), Some(cloneParameters))
+      goto(ClosedState) applying AuctionClosed(auctionId, getSystemUserId, AuctionReason.RESUMED_WITH_BIDS, "", Instant.now(), Some(cloneParameters))
   }
 
   //
@@ -297,7 +304,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // A bid was placed on a fixed price auction
       applyBidPlacedEventOnFixedPriceAuction(typedEvent, stateDataBefore, usersBid, auction)
 
-    case (ac@AuctionClosed(closedBy, reasonId, comment, createdAt, Some(cloneParameters)), ActiveAuction(auction)) =>
+    case (ac@AuctionClosed(auctionId, closedBy, reason, comment, createdAt, Some(cloneParameters)), ActiveAuction(auction)) =>
       stateDataBefore.closeAuction(ac)
 
     case (e, s) =>
@@ -425,8 +432,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     val currentPrice = auction.currentPrice
 
     auction.stock - usersBid.requestedQty match {
-      case stock if stock == 0 =>
-        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, no remaining stock / stateDataBefore $stateDataBefore")
+      case remainingStock if remainingStock == 0 =>
+        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, no remaining stock")
         val bids = List(Bid(usersBid, isVisible = true, isAuto = false, timeExtended = false, usersBid.bidPrice))
 
         stateDataBefore.placeBids(
@@ -438,8 +445,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
           updatedClosedBy = None
         )
 
-      case stock =>
-        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, remaining stock is ${stock}, duplicate the auction")
+      case remainingStock =>
+        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, remaining stock is ${remainingStock}, duplicate the auction")
         val bids = List(Bid(usersBid, isVisible = true, isAuto = false, timeExtended = false, usersBid.bidPrice))
         /* TODO Handle duplication via closeParameters
           %FsmAuctionData{fsm_data | 	closed_by: nil,
@@ -524,11 +531,12 @@ object AuctionActor {
 
   case object AuctionScheduledReply
 
-  case object AuctionClosedReply
+  case class AuctionClosedReply(reason: AuctionReason)
 
-  case object AuctionSuspendedReply
+  case class AuctionSuspendedReply(reason: AuctionReason)
 
   case object BidPlacedReply
+
   case class BidRejectedReply(usersBid: UsersBid, reason: BidRejectionReason)
 
   def props = Props(new AuctionActor)

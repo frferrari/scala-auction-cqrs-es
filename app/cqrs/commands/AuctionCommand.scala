@@ -5,7 +5,7 @@ import java.util.UUID
 
 import cqrs.UsersBid
 import models.Auction
-import models.Reasons.Reasons
+import models.AuctionReason.AuctionReason
 
 /**
   * Created by francois on 13/05/17.
@@ -23,7 +23,7 @@ case class PlaceBid(bidPayload: UsersBid) extends AuctionCommand
 
 case class CloseAuction(auctionId: UUID,
                         closedBy: UUID,
-                        reasonId: Reasons,
+                        reason: AuctionReason,
                         comment: String,
                         createdAt: Instant
                        ) extends AuctionCommand
@@ -37,6 +37,7 @@ case class RenewAuction(auctionId: UUID,
 
 case class SuspendAuction(auctionId: UUID,
                           suspendedBy: UUID,
+                          reason: AuctionReason,
                           createdAt: Instant
                          ) extends AuctionCommand
 
@@ -56,3 +57,12 @@ case class UnwatchAuction(auctionId: UUID,
                           userId: UUID,
                           unwatchedAt: Instant
                          ) extends AuctionCommand
+
+case class CloneAuction(parentAuction: Auction,
+                        stock: Int,
+                        startsAt: Instant,
+                        createdAt: Instant
+                       )
+object CloneAuction {
+  def apply(parentAucton: Auction, stock: Int, createdAt: Instant) = new CloneAuction(parentAucton, stock, createdAt, createdAt)
+}
