@@ -1,4 +1,4 @@
-package actors.fsm
+package actors.auction.fsm
 
 import akka.persistence.fsm.PersistentFSM.FSMState
 

@@ -3,7 +3,7 @@ package models
 import java.time.Instant
 import java.util.UUID
 
-import actors.AuctionActor
+import actors.auction.AuctionActor
 import org.scalatest.Matchers._
 import org.scalatestplus.play.PlaySpec
 

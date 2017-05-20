@@ -59,7 +59,7 @@ case class AuctionSold(auctionId: UUID,
                        createdAt: Instant
                       ) extends AuctionEvent
 
-case class BidPlaced(bidPayload: UsersBid) extends AuctionEvent
+case class BidPlaced(usersBid: UsersBid) extends AuctionEvent
 
 // case class BidRejected(bidPayload: UsersBid, rejectionReason: BidRejectionReason) extends AuctionEvent
 

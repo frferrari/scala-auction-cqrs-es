@@ -13,7 +13,8 @@ object BidRejectionReason extends Enumeration {
   val SELF_BIDDING, SELLER_LOCKED, BIDDER_LOCKED,
   AUCTION_HAS_ENDED, AUCTION_NOT_YET_STARTED,
   WRONG_REQUESTED_QTY, NOT_ENOUGH_STOCK,
-  BID_BELOW_ALLOWED_MIN, WRONG_BID_PRICE = Value
+  BID_BELOW_ALLOWED_MIN, WRONG_BID_PRICE,
+  HIGHEST_BIDDER_BIDS_BELOW_HIS_MAX_PRICE = Value
 }
 
 case class Bid(bidderId: UUID,
@@ -28,15 +29,15 @@ case class Bid(bidderId: UUID,
               )
 
 object Bid {
-  def apply(bidPayload: UsersBid, isVisible: Boolean, isAuto: Boolean, timeExtended: Boolean, currentPrice: BigDecimal) = new Bid(
-    bidPayload.bidderId,
-    "", // TODO fill in the bidderName
-    bidPayload.requestedQty,
-    bidPayload.bidPrice,
-    currentPrice,
-    isVisible,
-    isAuto,
-    timeExtended,
-    bidPayload.createdAt
-  )
+//  def apply(usersBid: UsersBid, isVisible: Boolean, isAuto: Boolean, timeExtended: Boolean, bidPrice: BigDecimal) = new Bid(
+//    bidderId = usersBid.bidderId,
+//    bidderName = "", // TODO fill in the bidderName
+//    requestedQty = usersBid.requestedQty,
+//    bidPrice = bidPrice,
+//    bidMaxPrice = usersBid.bidPrice,
+//    isVisible = isVisible,
+//    isAuto = isAuto,
+//    timeExtended = timeExtended,
+//    createdAt = usersBid.createdAt
+//  )
 }

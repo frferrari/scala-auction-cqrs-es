@@ -1,4 +1,4 @@
-package actors.fsm
+package actors.auction.fsm
 
 import java.time.Instant
 import java.util.UUID
@@ -17,7 +17,7 @@ sealed trait AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed): AuctionStateData
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]): AuctionStateData
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None): AuctionStateData
 }
 
 case object InactiveAuction extends AuctionStateData {
@@ -27,7 +27,7 @@ case object InactiveAuction extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = this
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 }
 
 case class ActiveAuction(auction: Auction) extends AuctionStateData {
@@ -47,7 +47,8 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
     FinishedAuction(updatedAuction)
   }
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = {
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = {
+    Logger.info(s":::::::::::::::::::::::: placeBids auction $auction ==== $bids")
     val updatedAuction = auction.copy(
       bids = bids ++ auction.bids,
       endsAt = updatedEndsAt,
@@ -57,8 +58,12 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
       closedBy = updatedClosedBy
     )
 
-    if (updatedStock == 0) ActiveAuction(updatedAuction)
-    else FinishedAuction(updatedAuction)
+    Logger.info(s":::::::::::::::::::::::: placeBids updatedAuction $auction ==== $bids")
+
+    if (updatedStock == 0)
+      FinishedAuction(updatedAuction)
+    else
+      ActiveAuction(updatedAuction)
   }
 }
 
@@ -69,7 +74,7 @@ case class FinishedAuction(auction: Auction) extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID]) = this
+  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 }
 
 //case class AuctionStateData(auctionId: UUID,

@@ -1,10 +1,10 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 import java.util.UUID
 
-import actors.AuctionActor._
-import actors.fsm.{InactiveAuction, StartedState, _}
+import actors.auction.AuctionActor._
+import actors.auction.fsm._
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.UsersBid
@@ -72,7 +72,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
-  startWith(IdleState, InactiveAuction)
+  startWith(fsm.IdleState, InactiveAuction)
 
   //
   // 	  ###   ######  #       #######
@@ -83,7 +83,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   // 	   #    #     # #       #
   // 	  ###   ######  ####### #######
   //
-  when(IdleState) {
+  when(fsm.IdleState) {
     case Event(evt: StartAuction, _) =>
       goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
 
@@ -129,8 +129,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   // 	 #####     #    #     # #     #    #    ####### ######
   //
   when(StartedState) {
-    // A bid was placed on an auction
-    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids =>
+    // A bid was placed on an auction without bids
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
@@ -168,12 +168,61 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply
-        // for tests --------------
-        //        andThen {
-        //          case ActiveAuction(a) if a.stock == 1 =>
-        //            self ! CloseAuction(a.auctionId, UUID.randomUUID(), UUID.randomUUID(), "Closed for tests", Instant.now())
+        stay applying BidPlaced(normalizedUsersBid)
+        // stay applying BidPlaced(normalizedUsersBid) replying bidPlacedWithInfoReply(stateData) // BidPlacedReply(stateData)
+        // TODO How to reply with the stateData resulting from the event application ? Is this an acceptable alternative way ?
+        //        applyEvent(BidPlaced(normalizedUsersBid), stateData) match {
+        //          case stateDataAfter => stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply(stateDataAfter)
         //        }
+      }
+
+    // A bid was placed on an auction with bids
+    case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.nonEmpty =>
+
+      val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
+
+      Logger.info(s"++++++++ Event $normalizedUsersBid ////// $auction")
+      Logger.info(s"++++++++ Event bidderId ${normalizedUsersBid.bidderId} bidPrice ${normalizedUsersBid.bidPrice} highestBidderId ${auction.bids.head.bidderId} bidMaxPrice ${auction.bids.head.bidMaxPrice}")
+
+      // A seller cannot bid on its own auctions
+      if (normalizedUsersBid.bidderId == auction.sellerId) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
+      }
+      // Bidding on an auction whose owner is locked in not allowed
+      else if (!canReceiveBids(auction.sellerId)) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
+      }
+      // Is the bidder allowed to bid ?
+      else if (!canBid(normalizedUsersBid.bidderId)) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      }
+      // Bidding after the end time of an auction is not allowed
+      else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
+      }
+      // Bidding on an auction that has not started is not allowed
+      else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
+      }
+      // Bidding with an erroneous qty is not allowed
+      else if (normalizedUsersBid.requestedQty != 1) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
+      }
+      // Bidding for too many auctions is not allowed
+      else if (auction.stock < 1) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.NOT_ENOUGH_STOCK)
+      }
+      // Bidding below the auction's current price is not allowed
+      else if (normalizedUsersBid.bidPrice < auction.currentPrice) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BID_BELOW_ALLOWED_MIN)
+      }
+      // Bidding yourself as the highest bidder and below your max price is not allowed
+      else if (normalizedUsersBid.bidderId == auction.bids.head.bidderId && normalizedUsersBid.bidPrice < auction.bids.head.bidMaxPrice) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.HIGHEST_BIDDER_BIDS_BELOW_HIS_MAX_PRICE)
+      }
+      // Validated bid
+      else {
+        stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply(stateData)
       }
 
     // A bid was placed on a fixed price auction
@@ -292,17 +341,17 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case (AuctionScheduled(auction), InactiveAuction) =>
       stateDataBefore.scheduleAuction(auction)
 
-    case (typedEvent@BidPlaced(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
+    case (bidPlaced: BidPlaced, activeAuction@ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
       // A bid was placed on an auction not holding any bids
-      applyBidPlacedEventOnAuctionWithoutBids(typedEvent, stateDataBefore, usersBid, auction)
+      applyBidPlacedEventOnAuctionWithoutBids(bidPlaced, activeAuction)
 
-    case (typedEvent@BidPlaced(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.nonEmpty =>
+    case (bidPlaced: BidPlaced, activeAuction@ActiveAuction(auction)) if auction.takesBids && auction.bids.nonEmpty =>
       // A bid was placed on an auction already holding at least one bid
-      applyBidPlacedEventOnAuctionWithBids(typedEvent, stateDataBefore, usersBid, auction)
+      applyBidPlacedEventOnAuctionWithBids(bidPlaced, activeAuction)
 
-    case (typedEvent@BidPlaced(usersBid), ActiveAuction(auction)) if !auction.takesBids =>
+    case (bidPlaced: BidPlaced, activeAuction@ActiveAuction(auction)) if !auction.takesBids =>
       // A bid was placed on a fixed price auction
-      applyBidPlacedEventOnFixedPriceAuction(typedEvent, stateDataBefore, usersBid, auction)
+      applyBidPlacedEventOnFixedPriceAuction(bidPlaced, activeAuction)
 
     case (ac@AuctionClosed(auctionId, closedBy, reason, comment, createdAt, Some(cloneParameters)), ActiveAuction(auction)) =>
       stateDataBefore.closeAuction(ac)
@@ -314,82 +363,120 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   /**
     *
-    * @param event           The event to apply
+    * @param bidPlaced       The event to apply
     * @param stateDataBefore The state data before applying the event
-    * @param usersBid        The user's bid
-    * @param auction         The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnAuctionWithoutBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
-    val (isTimeExtended, endsAt) = auction.extendIf
+  def applyBidPlacedEventOnAuctionWithoutBids(bidPlaced: BidPlaced, stateDataBefore: ActiveAuction): AuctionStateData = {
+    val (isTimeExtended, endsAt) = stateDataBefore.auction.extendIf
     /**
       * If the auction has a reserve price and the user's bid price is >= reserve_price then the current_price is raised
       * to reach the value of the auction's reserve price. This allows a bidder who would be the sole bidder to win the auction.
       */
-    val currentPrice = auction.reservePrice match {
-      case Some(reservePrice) if usersBid.bidPrice >= reservePrice => reservePrice
-      case _ => auction.currentPrice
+    val currentPrice = stateDataBefore.auction.reservePrice match {
+      case Some(reservePrice) if bidPlaced.usersBid.bidPrice >= reservePrice => reservePrice
+      case _ => stateDataBefore.auction.currentPrice
     }
-    val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
 
-    stateDataBefore.placeBids(List(bid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+    val bid = Bid(
+      bidderId = bidPlaced.usersBid.bidderId,
+      bidderName = bidPlaced.usersBid.bidderName,
+      requestedQty = 1,
+      bidPrice = currentPrice,
+      bidMaxPrice = bidPlaced.usersBid.bidPrice,
+      isVisible = true,
+      isAuto = false,
+      timeExtended = isTimeExtended,
+      createdAt = bidPlaced.usersBid.createdAt
+    )
+
+    val stateDataAfter = stateDataBefore.placeBids(List(bid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
+    Logger.info(s":::::: stateDataAfter $stateDataAfter")
+    stateDataAfter
   }
 
   /**
     *
-    * @param event           The event to apply
+    * @param bidPlaced       The event to apply
     * @param stateDataBefore The state data before applying the event
-    * @param usersBid        The users bid
-    * @param auction         The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnAuctionWithBids(event: AuctionEvent, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
-    val highestBid: Bid = auction.bids.head
-    val (isTimeExtended, endsAt) = auction.extendIf
+  def applyBidPlacedEventOnAuctionWithBids(bidPlaced: BidPlaced, stateDataBefore: ActiveAuction): AuctionStateData = {
+    val highestBid: Bid = stateDataBefore.auction.bids.head
+    val (isTimeExtended, endsAt) = stateDataBefore.auction.extendIf
 
-    if (usersBid.bidderId == highestBid.bidderId && auction.reservePrice.isEmpty) {
+    if (bidPlaced.usersBid.bidderId == highestBid.bidderId && stateDataBefore.auction.reservePrice.isEmpty) {
       /**
-        * The current highest bidder wants to raise its max bid price.
+        * The current highest bidder wants to raise his max bid price.
         * The auction's current price doesn't change, and the new bid isn't visible
         */
-      val currentPrice = auction.currentPrice
-      val bid = Bid(usersBid, isVisible = false, isAuto = false, isTimeExtended, currentPrice)
+      val bid = Bid(
+        bidderId = bidPlaced.usersBid.bidderId,
+        bidderName = bidPlaced.usersBid.bidderName,
+        requestedQty = 1,
+        bidPrice = stateDataBefore.auction.currentPrice,
+        bidMaxPrice = bidPlaced.usersBid.bidPrice,
+        isVisible = false,
+        isAuto = false,
+        timeExtended = isTimeExtended,
+        createdAt = bidPlaced.usersBid.createdAt
+      )
 
-      stateDataBefore.placeBids(List(bid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), endsAt, stateDataBefore.auction.currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
-    else if (usersBid.bidderId == highestBid.bidderId && auction.reservePrice.isDefined) {
+    else if (bidPlaced.usersBid.bidderId == highestBid.bidderId && stateDataBefore.auction.reservePrice.isDefined) {
       /**
-        * The current highest bidder wants to raise its max bid price.
+        * The current highest bidder wants to raise his max bid price.
         *
         * If the users bid price is >= auction's reserve price and it's the first time we exceed the reserve price
         * then the auction's current price is raised to reach the value of the auction's reserve price
         * and the new bid is visible.
         */
-      val (isBidVisible, currentPrice) = if (usersBid.bidPrice >= auction.reservePrice.get) {
-        if (auction.currentPrice < auction.reservePrice.get)
-          (true, auction.reservePrice.get)
+      val (isBidVisible, currentPrice) = if (bidPlaced.usersBid.bidPrice >= stateDataBefore.auction.reservePrice.get) {
+        if (stateDataBefore.auction.currentPrice < stateDataBefore.auction.reservePrice.get)
+          (true, stateDataBefore.auction.reservePrice.get)
         else
-          (false, auction.currentPrice)
+          (false, stateDataBefore.auction.currentPrice)
       }
       else
-        (false, auction.currentPrice)
+        (false, stateDataBefore.auction.currentPrice)
 
-      val bid = Bid(usersBid, isBidVisible, isAuto = false, isTimeExtended, currentPrice)
+      val bid = Bid(
+        bidderId = bidPlaced.usersBid.bidderId,
+        bidderName = bidPlaced.usersBid.bidderName,
+        requestedQty = 1,
+        bidPrice = currentPrice,
+        bidMaxPrice = bidPlaced.usersBid.bidPrice,
+        isVisible = isBidVisible,
+        isAuto = false,
+        timeExtended = isTimeExtended,
+        createdAt = bidPlaced.usersBid.createdAt
+      )
 
-      stateDataBefore.placeBids(List(bid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
-    else if (usersBid.bidPrice <= highestBid.bidMaxPrice) {
+    else if (bidPlaced.usersBid.bidPrice <= highestBid.bidMaxPrice) {
       /**
         * Case of a bid that is greater than the auction's current price AND lower than the highest bidder max bid.
         *
         * The highest bidder keeps its position of highest bidder, and we raise the auction's current price to the
         * user's bid price
         */
-      val currentPrice = usersBid.bidPrice
-      val bid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
-      val updatedHighestBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = currentPrice)
+      val bid = Bid(
+        bidderId = bidPlaced.usersBid.bidderId,
+        bidderName = bidPlaced.usersBid.bidderName,
+        requestedQty = 1,
+        bidPrice = bidPlaced.usersBid.bidPrice,
+        bidMaxPrice = highestBid.bidMaxPrice,
+        isVisible = true,
+        isAuto = false,
+        timeExtended = isTimeExtended,
+        createdAt = bidPlaced.usersBid.createdAt
+      )
+      val updatedHighestBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = bidPlaced.usersBid.bidPrice)
 
-      stateDataBefore.placeBids(List(updatedHighestBid, bid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+      // It is MANDATORY to keep the order of the bids in the list below
+      stateDataBefore.placeBids(List(updatedHighestBid, bid), endsAt, bidPlaced.usersBid.bidPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else {
       /**
@@ -399,55 +486,83 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         * If the auction has a reserve price and the user's bid price is >= reserve price then the
         * auction's current price is raised to reach the value of the auction's reserve price.
         */
-      val currentPrice = auction.reservePrice match {
-        case Some(reservePrice) if usersBid.bidPrice >= reservePrice => reservePrice
-        case _ => highestBid.bidMaxPrice + auction.bidIncrement
+      val currentPrice = stateDataBefore.auction.reservePrice match {
+        case Some(reservePrice) if bidPlaced.usersBid.bidPrice >= reservePrice => reservePrice
+        case _ => highestBid.bidMaxPrice + stateDataBefore.auction.bidIncrement
       }
 
-      val newHighestBid = Bid(usersBid, isVisible = true, isAuto = false, isTimeExtended, currentPrice)
+      val newHighestBid = Bid(
+        bidderId = bidPlaced.usersBid.bidderId,
+        bidderName = bidPlaced.usersBid.bidderName,
+        requestedQty = 1,
+        bidPrice = currentPrice,
+        bidMaxPrice = bidPlaced.usersBid.bidPrice,
+        isVisible = true,
+        isAuto = false,
+        timeExtended = isTimeExtended,
+        createdAt = bidPlaced.usersBid.createdAt
+      )
 
       /**
         * We don't generate an automatic bid for the current highest bidder if the auction's price has already reached
         * the highest bidder max bid value
         */
-      if (auction.currentPrice == highestBid.bidMaxPrice) {
-        stateDataBefore.placeBids(List(newHighestBid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+      if (stateDataBefore.auction.currentPrice == highestBid.bidMaxPrice) {
+        stateDataBefore.placeBids(List(newHighestBid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
       else {
         val newBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = highestBid.bidMaxPrice)
-        stateDataBefore.placeBids(List(newHighestBid, newBid), endsAt, currentPrice, auction.stock, auction.originalStock, None)
+        // It is MANDATORY to keep the order of the bids in the list below
+        stateDataBefore.placeBids(List(newHighestBid, newBid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
     }
   }
 
   /**
     *
-    * @param event           The event to apply
+    * @param bidPlaced       The event to apply
     * @param stateDataBefore The state data before applying the event
-    * @param usersBid        The users's bid
-    * @param auction         The auction to apply the event on
     * @return
     */
-  def applyBidPlacedEventOnFixedPriceAuction(event: BidPlaced, stateDataBefore: AuctionStateData, usersBid: UsersBid, auction: Auction): AuctionStateData = {
-    val currentPrice = auction.currentPrice
+  def applyBidPlacedEventOnFixedPriceAuction(bidPlaced: BidPlaced, stateDataBefore: ActiveAuction): AuctionStateData = {
 
-    auction.stock - usersBid.requestedQty match {
+    stateDataBefore.auction.stock - bidPlaced.usersBid.requestedQty match {
       case remainingStock if remainingStock == 0 =>
-        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, no remaining stock")
-        val bids = List(Bid(usersBid, isVisible = true, isAuto = false, timeExtended = false, usersBid.bidPrice))
+        Logger.info(s"Auction ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, no remaining stock")
+        val bid = Bid(
+          bidderId = bidPlaced.usersBid.bidderId,
+          bidderName = bidPlaced.usersBid.bidderName,
+          requestedQty = bidPlaced.usersBid.requestedQty,
+          bidPrice = stateDataBefore.auction.currentPrice,
+          bidMaxPrice = stateDataBefore.auction.currentPrice,
+          isVisible = true,
+          isAuto = false,
+          timeExtended = false,
+          bidPlaced.usersBid.createdAt
+        )
 
         stateDataBefore.placeBids(
-          bids = bids,
-          updatedEndsAt = usersBid.createdAt,
-          updatedCurrentPrice = currentPrice,
+          bids = List(bid),
+          updatedEndsAt = bidPlaced.usersBid.createdAt,
+          updatedCurrentPrice = stateDataBefore.auction.currentPrice,
           updatedStock = 0,
-          updatedOriginalStock = usersBid.requestedQty,
+          updatedOriginalStock = bidPlaced.usersBid.requestedQty,
           updatedClosedBy = None
         )
 
       case remainingStock =>
-        Logger.info(s"Auction ${auction.auctionId} sold for a qty of ${usersBid.requestedQty}, remaining stock is ${remainingStock}, duplicate the auction")
-        val bids = List(Bid(usersBid, isVisible = true, isAuto = false, timeExtended = false, usersBid.bidPrice))
+        Logger.info(s"Auction ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, remaining stock is ${remainingStock}, duplicate the auction")
+        val bid = Bid(
+          bidderId = bidPlaced.usersBid.bidderId,
+          bidderName = bidPlaced.usersBid.bidderName,
+          requestedQty = 1,
+          bidPrice = stateDataBefore.auction.currentPrice,
+          bidMaxPrice = stateDataBefore.auction.currentPrice,
+          isVisible = true,
+          isAuto = false,
+          timeExtended = false,
+          createdAt = bidPlaced.usersBid.createdAt
+        )
         /* TODO Handle duplication via closeParameters
           %FsmAuctionData{fsm_data | 	closed_by: nil,
                                       original_stock: event.requested_qty,
@@ -459,11 +574,11 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
                                       bids: [Map.from_struct(new_bid)]}
          */
         stateDataBefore.placeBids(
-          bids = bids,
-          updatedEndsAt = auction.endsAt,
-          updatedCurrentPrice = currentPrice,
+          bids = List(bid),
+          updatedEndsAt = stateDataBefore.auction.endsAt,
+          updatedCurrentPrice = stateDataBefore.auction.currentPrice,
           updatedStock = 0,
-          updatedOriginalStock = usersBid.requestedQty,
+          updatedOriginalStock = bidPlaced.usersBid.requestedQty,
           updatedClosedBy = None
         )
     }
@@ -535,7 +650,32 @@ object AuctionActor {
 
   case class AuctionSuspendedReply(reason: AuctionReason)
 
-  case object BidPlacedReply
+  trait BidPlacedReply
+
+  object BidPlacedReply {
+    def apply(stateData: => AuctionStateData) = stateData match {
+      case ActiveAuction(auction) =>
+        Logger.info(s"BidPlacedReply.apply(stateData) ============== auction=$auction")
+
+        new BidPlacedWithInfoReply(
+          auctionId = auction.auctionId,
+          stock = auction.stock,
+          currentPrice = auction.currentPrice,
+          bidCount = auction.bids.length,
+          highestBidderId = auction.bids.headOption.map(_.bidderId),
+          highestBidderPrice = auction.bids.headOption.map(_.bidMaxPrice)
+        )
+      case _ => BidPlacedReply
+    }
+  }
+
+  case class BidPlacedWithInfoReply(auctionId: UUID,
+                                    stock: Int,
+                                    currentPrice: BigDecimal,
+                                    bidCount: Int,
+                                    highestBidderId: Option[UUID],
+                                    highestBidderPrice: Option[BigDecimal]
+                                   ) extends BidPlacedReply
 
   case class BidRejectedReply(usersBid: UsersBid, reason: BidRejectionReason)
 
