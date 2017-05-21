@@ -3,7 +3,7 @@ package actors.auction.fsm
 import java.time.Instant
 import java.util.UUID
 
-import cqrs.events.AuctionClosed
+import cqrs.events.{AuctionClosed, AuctionRestarted}
 import models.{Auction, Bid}
 import play.api.Logger
 
@@ -18,6 +18,8 @@ sealed trait AuctionStateData {
   def closeAuction(auctionClosed: AuctionClosed): AuctionStateData
 
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None): AuctionStateData
+
+  def restartAuction(auction: Auction): AuctionStateData
 }
 
 case object InactiveAuction extends AuctionStateData {
@@ -28,6 +30,8 @@ case object InactiveAuction extends AuctionStateData {
   def closeAuction(auctionClosed: AuctionClosed) = this
 
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
+
+  def restartAuction(auction: Auction) = this
 }
 
 case class ActiveAuction(auction: Auction) extends AuctionStateData {
@@ -63,6 +67,13 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
     else
       ActiveAuction(updatedAuction)
   }
+
+  def restartAuction(auction: Auction) = ActiveAuction(
+    auction.copy(
+      startsAt = auction.endsAt,
+      endsAt = auction.endsAt.plusSeconds(auction.endsAt.getEpochSecond - auction.startsAt.getEpochSecond)
+    )
+  )
 }
 
 case class FinishedAuction(auction: Auction) extends AuctionStateData {
@@ -73,6 +84,8 @@ case class FinishedAuction(auction: Auction) extends AuctionStateData {
   def closeAuction(auctionClosed: AuctionClosed) = this
 
   def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
+
+  def restartAuction(auction: Auction) = this
 }
 
 //case class AuctionStateData(auctionId: UUID,

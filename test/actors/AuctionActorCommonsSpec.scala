@@ -26,7 +26,14 @@ trait AuctionActorCommonsSpec {
 
   def bidEssentials(bids: Seq[Bid]): Seq[(UUID, Int, BigDecimal, BigDecimal, Boolean, Boolean, Boolean)] = bids.map(bid => (bid.bidderId, bid.requestedQty, bid.bidPrice, bid.bidMaxPrice, bid.isVisible, bid.isAuto, bid.timeExtended))
 
-  def getScheduledAuction(startPrice: BigDecimal, bidIncrement: BigDecimal, lastsSeconds: Long, reservePrice: Option[BigDecimal] = None) = Auction(
+  def getScheduledAuction(startPrice: BigDecimal,
+                          bidIncrement: BigDecimal,
+                          startsAt: Instant,
+                          lastsSeconds: Long,
+                          hasAutomaticRenewal: Boolean,
+                          hasTimeExtension: Boolean,
+                          reservePrice: Option[BigDecimal] = None
+                         ) = Auction(
     auctionId = UUID.randomUUID(),
     None, None, None,
     sellerId = sellerAUUID,
@@ -37,13 +44,13 @@ trait AuctionActorCommonsSpec {
     bids = Nil,
     startPrice = startPrice, currentPrice = startPrice, bidIncrement = bidIncrement, reservePrice = reservePrice,
     stock = 1, originalStock = 1,
-    instantNow.plusSeconds(5), None, instantNow.plusSeconds(lastsSeconds),
-    hasAutomaticRenewal = true,
-    hasTimeExtension = false,
+    startsAt, None, startsAt.plusSeconds(lastsSeconds),
+    hasAutomaticRenewal = hasAutomaticRenewal,
+    hasTimeExtension = hasTimeExtension,
     renewalCount = 0, watchersCount = 0, visitorsCount = 0,
     "EUR",
     slug = None, pictures = Nil,
     closedBy = None, closedAt = None,
-    instantNow
+    createdAt = instantNow
   )
 }

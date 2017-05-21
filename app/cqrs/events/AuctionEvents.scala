@@ -29,7 +29,8 @@ case class AuctionClosed(auctionId: UUID,
 
 object AuctionClosed {
   def apply(cmd: CloseAuction) = new AuctionClosed(cmd.auctionId, cmd.closedBy, cmd.reason, cmd.comment, cmd.createdAt)
-  def apply(evt: CloseAuctionByTimer) = new AuctionClosed(evt.auction.auctionId, UUID.randomUUID(), AuctionReason.CLOSED_BY_TIMER, "", Instant.now())
+
+  def apply(evt: CloseAuctionByTimer) = new AuctionClosed(evt.auctionId, UUID.randomUUID(), AuctionReason.CLOSED_BY_TIMER, "", Instant.now())
 }
 
 case class AuctionRenewed(auctionId: UUID,
@@ -50,7 +51,11 @@ case class AuctionResumed(auctionId: UUID,
                           createdAt: Instant
                          ) extends AuctionEvent
 
-case class AuctionRestarted(auction: Auction) extends AuctionEvent
+case class AuctionRestarted(auctionId: UUID,
+                            restartedBy: UUID,
+                            reason: AuctionReason,
+                            createdAt: Instant
+                           ) extends AuctionEvent
 
 case class AuctionSold(auctionId: UUID,
                        soldTo: UUID,

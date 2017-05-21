@@ -15,6 +15,7 @@ sealed trait AuctionCommand
 case class CreateAuction(auction: Auction) extends AuctionCommand
 
 case class StartAuction(auction: Auction) extends AuctionCommand
+
 case class StartAuctionByTimer(auction: Auction) extends AuctionCommand
 
 case class ScheduleAuction(auction: Auction) extends AuctionCommand
@@ -27,7 +28,10 @@ case class CloseAuction(auctionId: UUID,
                         comment: String,
                         createdAt: Instant
                        ) extends AuctionCommand
-case class CloseAuctionByTimer(auction: Auction) extends AuctionCommand
+
+case class CloseAuctionByTimer(auctionId: UUID,
+                               createdAt: Instant
+                              ) extends AuctionCommand
 
 case class RenewAuction(auctionId: UUID,
                         renewedBy: UUID,
@@ -64,6 +68,7 @@ case class CloneAuction(parentAuction: Auction,
                         startsAt: Instant,
                         createdAt: Instant
                        ) extends AuctionCommand
+
 object CloneAuction {
   def apply(parentAucton: Auction, stock: Int, createdAt: Instant) = new CloneAuction(parentAucton, stock, createdAt, createdAt)
 }

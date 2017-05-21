@@ -1,5 +1,7 @@
 package actors
 
+import java.time.Instant
+
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ClosedState, FinishedAuction}
@@ -27,7 +29,14 @@ class AuctionActorSpec1() extends TestKit(ActorSystem("AuctionActorSpec"))
   "An AUCTION W/O reserve price W/O automatic renewal W/O bidders" should {
 
     val auctionActor = AuctionActor.createAuctionActor(Some("test1"))
-    val auction = getScheduledAuction(startPrice = 0.10, bidIncrement = 0.10, lastsSeconds = 20)
+    val auction = getScheduledAuction(
+      startPrice = 0.10,
+      bidIncrement = 0.10,
+      startsAt = Instant.now(),
+      lastsSeconds = 20,
+      hasAutomaticRenewal = false,
+      hasTimeExtension = false
+    )
 
     "start an auction in ScheduledState" in {
       auctionActor ! ScheduleAuction(auction)
@@ -39,11 +48,11 @@ class AuctionActorSpec1() extends TestKit(ActorSystem("AuctionActorSpec"))
 
       auctionActor ! GetCurrentState
       expectMsgPF() {
-        case CurrentStateReply(ClosedState, FinishedAuction(auction))
-          if auction.bids.length == 0 &&
-            auction.currentPrice == auction.startPrice &&
-            auction.closedBy.isDefined &&
-            auction.closedAt.isDefined
+        case CurrentStateReply(ClosedState, FinishedAuction(finishedAuction))
+          if finishedAuction.bids.isEmpty &&
+            finishedAuction.currentPrice == finishedAuction.startPrice &&
+            finishedAuction.closedBy.isDefined &&
+            finishedAuction.closedAt.isDefined
         => ()
       }
     }

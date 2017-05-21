@@ -285,7 +285,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case Event(evt: CloseAuction, ActiveAuction(_)) =>
       goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
 
-    case Event(evt: CloseAuctionByTimer, _) =>
+    case Event(evt: CloseAuctionByTimer, ActiveAuction(auction)) if auction.bids.isEmpty && auction.hasAutomaticRenewal =>
+      // An auction without bid and with automatic renewal needs to be restarted
+      stay applying AuctionRestarted(evt.auctionId, /* TODO restartedBy */ UUID.randomUUID(), AuctionReason.RESTARTED_BY_TIMER, evt.createdAt) andThen {
+        case ActiveAuction(restartedAuction) => startCloseTimer(restartedAuction)
+      }
+
+    case Event(evt: CloseAuctionByTimer, ActiveAuction(auction)) =>
       goto(ClosedState) applying AuctionClosed(evt)
   }
 
@@ -369,6 +375,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
     case (auctionClosed: AuctionClosed, stateData: ActiveAuction) =>
       stateDataBefore.closeAuction(auctionClosed)
+
+    case (auctionRestarted: AuctionRestarted, ActiveAuction(auction)) =>
+      stateDataBefore.restartAuction(auction)
 
     case (e, s) =>
       // Unhandled case
@@ -665,7 +674,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     }
 
     val timerName = getTimerName("close", auction)
-    setTimer(timerName, CloseAuctionByTimer(auction), secondsToWait.seconds, repeat = false)
+    setTimer(timerName, CloseAuctionByTimer(auction.auctionId, Instant.now()), secondsToWait.seconds, repeat = false)
     Logger.debug(s"Starting timer $timerName for Auction ${auction.auctionId} in $secondsToWait seconds")
     timerName
   }
