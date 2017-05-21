@@ -13,6 +13,13 @@ scalaVersion := "2.11.11"
 
 parallelExecution in Test := false
 
+concurrentRestrictions in Global := Seq(
+  Tags.limit(Tags.CPU, 2),
+  Tags.limit(Tags.Network, 10),
+  Tags.limit(Tags.Test, 1),
+  Tags.limitAll( 1 )
+)
+
 resolvers += Resolver.jcenterRepo
 
 libraryDependencies ++= Seq(

@@ -38,6 +38,7 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
   def closeAuction(ac: AuctionClosed) = {
     val updatedAuction = auction.copy(
       closedBy = Some(ac.closedBy),
+      closedAt = Some(ac.createdAt),
       originalStock = auction.stock,
       stock = 0,
       renewalCount = auction.renewalCount + 1,

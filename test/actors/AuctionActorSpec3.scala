@@ -1,7 +1,6 @@
 package actors
 
 import java.time.Instant
-import java.util.UUID
 
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
@@ -10,7 +9,7 @@ import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
 import cqrs.commands.{GetCurrentState, PlaceBid, ScheduleAuction}
-import models.{Auction, AuctionType, BidRejectionReason}
+import models.BidRejectionReason
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
 import scala.concurrent.duration._
@@ -18,7 +17,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 17/05/2017
   */
-class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
+class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
   with AuctionActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
@@ -29,35 +28,13 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  def getScheduledAuction(startPrice: BigDecimal, bidIncrement: BigDecimal, lastsSeconds: Long, reservePrice: Option[BigDecimal] = None) = Auction(
-    auctionId = UUID.randomUUID(),
-    None, None, None,
-    sellerId = sellerAUUID,
-    typeId = UUID.randomUUID(), listedTimeId = UUID.randomUUID(),
-    AuctionType.AUCTION,
-    "Eiffel tower", "", 2010,
-    areaId = UUID.randomUUID(), topicIds = Nil, options = Nil, matchedId = None,
-    bids = Nil,
-    startPrice = startPrice, currentPrice = startPrice, bidIncrement = bidIncrement, reservePrice = reservePrice,
-    stock = 1, originalStock = 1,
-    instantNow.plusSeconds(5), None, instantNow.plusSeconds(lastsSeconds),
-    hasAutomaticRenewal = true,
-    hasTimeExtension = false,
-    renewalCount = 0, watchersCount = 0, visitorsCount = 0,
-    "EUR",
-    slug = None, pictures = Nil,
-    closedBy = None, closedAt = None,
-    instantNow
-  )
+  "An AUCTION W/O reserve price W/2 bidders" should {
 
-  "An AUCTION w/o reserve price" should {
-
-    val auctionActor = AuctionActor.createAuctionActor()
-
+    val auctionActor = AuctionActor.createAuctionActor(Some("test2"))
     val auction = getScheduledAuction(startPrice = 0.10, bidIncrement = 0.10, lastsSeconds = 20)
-    auctionActor ! ScheduleAuction(auction)
 
-    "reject a bid on an auction not yet started" in {
+    "start an auction in ScheduledState" in {
+      auctionActor ! ScheduleAuction(auction)
       expectMsg(AuctionScheduledReply)
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, auction.stock, auction.currentPrice, Instant.now()))
       expectMsgPF() {

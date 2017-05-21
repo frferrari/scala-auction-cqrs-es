@@ -732,6 +732,7 @@ object AuctionActor {
 
   def createAuctionActor(maybeActorName: Option[String] = None)(implicit system: ActorSystem) = {
     val actorName = maybeActorName.getOrElse(s"auction-${UUID.randomUUID()}")
+    Logger.info(s"Creating actor with name $actorName")
 
     system.actorOf(Props(new AuctionActor()), name = actorName)
   }

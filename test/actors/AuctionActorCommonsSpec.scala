@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.UUID
 
 import akka.testkit.TestKit
-import models.{Auction, Bid}
+import models.{Auction, AuctionType, Bid}
 import play.api.Logger
 
 /**
@@ -19,7 +19,31 @@ trait AuctionActorCommonsSpec {
 
   def instantNow: Instant = Instant.now()
 
-  def secondsToWaitForAuctionEnd(auction: Auction, gap: Long = 5): Long = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond + gap
+  def secondsToWaitForAuctionEnd(auction: Auction, delay: Long = 5): Long = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond match {
+    case stw if stw > 0 => stw+delay
+    case stx => delay
+  }
 
   def bidEssentials(bids: Seq[Bid]): Seq[(UUID, Int, BigDecimal, BigDecimal, Boolean, Boolean, Boolean)] = bids.map(bid => (bid.bidderId, bid.requestedQty, bid.bidPrice, bid.bidMaxPrice, bid.isVisible, bid.isAuto, bid.timeExtended))
+
+  def getScheduledAuction(startPrice: BigDecimal, bidIncrement: BigDecimal, lastsSeconds: Long, reservePrice: Option[BigDecimal] = None) = Auction(
+    auctionId = UUID.randomUUID(),
+    None, None, None,
+    sellerId = sellerAUUID,
+    typeId = UUID.randomUUID(), listedTimeId = UUID.randomUUID(),
+    AuctionType.AUCTION,
+    "Eiffel tower", "", 2010,
+    areaId = UUID.randomUUID(), topicIds = Nil, options = Nil, matchedId = None,
+    bids = Nil,
+    startPrice = startPrice, currentPrice = startPrice, bidIncrement = bidIncrement, reservePrice = reservePrice,
+    stock = 1, originalStock = 1,
+    instantNow.plusSeconds(5), None, instantNow.plusSeconds(lastsSeconds),
+    hasAutomaticRenewal = true,
+    hasTimeExtension = false,
+    renewalCount = 0, watchersCount = 0, visitorsCount = 0,
+    "EUR",
+    slug = None, pictures = Nil,
+    closedBy = None, closedAt = None,
+    instantNow
+  )
 }
