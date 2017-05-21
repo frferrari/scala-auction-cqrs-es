@@ -4,7 +4,7 @@ import java.time.Instant
 
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
-import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
+import actors.auction.fsm.{ActiveAuction, StartedState}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands.{GetCurrentState, ScheduleAuction}
@@ -54,7 +54,8 @@ class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
             restartedAuction.closedBy.isEmpty &&
             restartedAuction.closedAt.isEmpty &&
             restartedAuction.startsAt == auction.endsAt &&
-            restartedAuction.endsAt.isAfter(restartedAuction.startsAt)
+            restartedAuction.endsAt.isAfter(restartedAuction.startsAt) &&
+            ! restartedAuction.isSold
         => ()
       }
     }

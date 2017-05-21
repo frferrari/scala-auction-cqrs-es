@@ -52,7 +52,8 @@ class AuctionActorSpec1() extends TestKit(ActorSystem("AuctionActorSpec"))
           if finishedAuction.bids.isEmpty &&
             finishedAuction.currentPrice == finishedAuction.startPrice &&
             finishedAuction.closedBy.isDefined &&
-            finishedAuction.closedAt.isDefined
+            finishedAuction.closedAt.isDefined &&
+            ! finishedAuction.isSold
         => ()
       }
     }

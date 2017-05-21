@@ -50,6 +50,7 @@ case class Auction(auctionId: UUID,
                    pictures: Seq[UUID],
                    closedBy: Option[UUID],
                    closedAt: Option[Instant],
+                   isSold: Boolean,
                    createdAt: Instant
                   ) {
 

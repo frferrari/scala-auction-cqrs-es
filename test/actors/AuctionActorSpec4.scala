@@ -241,7 +241,8 @@ class AuctionActorSpec4() extends TestKit(ActorSystem("AuctionActorSpec"))
             finishedAuction.bids.head.bidMaxPrice == 6.20 &&
             finishedAuction.bids.head.bidderId == bidderBUUID &&
             bidEssentials(finishedAuction.bids) == expectedBidEssentials &&
-            finishedAuction.closedBy.isDefined
+            finishedAuction.closedBy.isDefined &&
+            finishedAuction.isSold
         => ()
       }
     }

@@ -5,10 +5,11 @@ import java.util.UUID
 
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
+import actors.auction.fsm.{ClosedState, FinishedAuction}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
-import cqrs.commands.{PlaceBid, ScheduleAuction}
+import cqrs.commands.{GetCurrentState, PlaceBid, ScheduleAuction}
 import models.{Auction, AuctionReason, AuctionType, BidRejectionReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -64,6 +65,7 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
     pictures = Nil,
     closedBy = None,
     closedAt = None,
+    isSold = false,
     instantNow
   )
 
@@ -117,6 +119,20 @@ class FixedPriceAuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, auction.stock, auction.currentPrice, Instant.now()))
       expectMsgPF(10.seconds) {
         case AuctionClosedReply(AuctionReason.BID_NO_REMAINING_STOCK) => ()
+      }
+    }
+
+    "be in CLOSED and SOLD state" in {
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderAUUID, 10, auction.currentPrice, auction.currentPrice, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(ClosedState, FinishedAuction(finishedAuction))
+          if finishedAuction.currentPrice == auction.currentPrice &&
+          bidEssentials(finishedAuction.bids) == expectedBidEssentials &&
+          finishedAuction.isSold
+        => ()
       }
     }
 

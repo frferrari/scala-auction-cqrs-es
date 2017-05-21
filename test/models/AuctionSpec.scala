@@ -23,7 +23,7 @@ class AuctionSpec extends PlaySpec {
     Instant.now(), None, Instant.now().plusSeconds(60*60*24*10),
     true, false,
     0, 0, 0,
-    "EUR", None, Nil, None, None,
+    "EUR", None, Nil, None, None, false,
     Instant.now()
   )
 

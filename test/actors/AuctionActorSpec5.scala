@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 21/05/2017
   */
-class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
+class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
   with AuctionActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
@@ -27,7 +27,7 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  "An AUCTION W/O reserve price W/1 bidder" should {
+  "An AUCTION W/reserve price W/1 bidder lower than the reserve price" should {
 
     val auctionActor = AuctionActor.createAuctionActor()
     val auction = getScheduledAuction(
@@ -36,7 +36,8 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
       startsAt = Instant.now(),
       lastsSeconds = 20,
       hasAutomaticRenewal = false,
-      hasTimeExtension = false
+      hasTimeExtension = false,
+      Some(8)
     )
 
     "schedule and start an auction" in {
@@ -66,7 +67,7 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
       }
     }
 
-    "be in CLOSED state when it has reached it's end time with bidderA as a winner" in {
+    "be in CLOSED state when it has reached it's end time without winner" in {
       expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
 
       auctionActor ! GetCurrentState
@@ -76,7 +77,7 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
             finishedAuction.currentPrice == finishedAuction.startPrice &&
             finishedAuction.closedBy.isDefined &&
             finishedAuction.closedAt.isDefined &&
-            finishedAuction.isSold
+            !finishedAuction.isSold
         => ()
       }
     }

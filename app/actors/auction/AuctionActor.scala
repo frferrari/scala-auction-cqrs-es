@@ -51,6 +51,7 @@ object Test {
       "EUR",
       None, Nil,
       None, None,
+      false,
       instantNow
     )
 
@@ -274,7 +275,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
           case remainingStock if remainingStock > 0 =>
             goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
               case ActiveAuction(updatedAuction) =>
-                // Clone the auction
+                // TODO Clone the auction
                 context.parent ! CloneAuction(updatedAuction, remainingStock, Instant.now())
             }
 
@@ -413,8 +414,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       createdAt = bidPlaced.usersBid.createdAt
     )
 
-    val stateDataAfter = stateDataBefore.placeBids(List(bid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
-    stateDataAfter
+    stateDataBefore.placeBids(List(bid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
   }
 
   /**
@@ -444,7 +444,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         createdAt = bidPlaced.usersBid.createdAt
       )
 
-      stateDataBefore.placeBids(List(bid), endsAt, stateDataBefore.auction.currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), false, endsAt, stateDataBefore.auction.currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else if (bidPlaced.usersBid.bidderId == highestBid.bidderId && stateDataBefore.auction.reservePrice.isDefined) {
       /**
@@ -475,7 +475,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         createdAt = bidPlaced.usersBid.createdAt
       )
 
-      stateDataBefore.placeBids(List(bid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else if (bidPlaced.usersBid.bidPrice <= highestBid.bidMaxPrice) {
       /**
@@ -498,7 +498,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       val updatedHighestBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = bidPlaced.usersBid.bidPrice)
 
       // It is MANDATORY to keep the order of the bids in the list below
-      stateDataBefore.placeBids(List(updatedHighestBid, bid), endsAt, bidPlaced.usersBid.bidPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(updatedHighestBid, bid), false, endsAt, bidPlaced.usersBid.bidPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else {
       /**
@@ -530,12 +530,12 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         * the highest bidder max bid value
         */
       if (stateDataBefore.auction.currentPrice == highestBid.bidMaxPrice) {
-        stateDataBefore.placeBids(List(newHighestBid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+        stateDataBefore.placeBids(List(newHighestBid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
       else {
         val newBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = highestBid.bidMaxPrice)
         // It is MANDATORY to keep the order of the bids in the list below
-        stateDataBefore.placeBids(List(newHighestBid, newBid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+        stateDataBefore.placeBids(List(newHighestBid, newBid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
     }
   }
@@ -569,7 +569,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
           updatedCurrentPrice = stateDataBefore.auction.currentPrice,
           updatedStock = 0,
           updatedOriginalStock = bidPlaced.usersBid.requestedQty,
-          updatedClosedBy = None
+          updatedClosedBy = None,
+          isSold = true
         )
 
       case remainingStock =>
@@ -601,7 +602,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
           updatedCurrentPrice = stateDataBefore.auction.currentPrice,
           updatedStock = 0,
           updatedOriginalStock = bidPlaced.usersBid.requestedQty,
-          updatedClosedBy = None
+          updatedClosedBy = None,
+          isSold = true
         )
     }
   }

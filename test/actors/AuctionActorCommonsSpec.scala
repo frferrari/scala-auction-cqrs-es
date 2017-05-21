@@ -51,6 +51,7 @@ trait AuctionActorCommonsSpec {
     "EUR",
     slug = None, pictures = Nil,
     closedBy = None, closedAt = None,
+    isSold = false,
     createdAt = instantNow
   )
 }

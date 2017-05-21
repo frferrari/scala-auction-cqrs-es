@@ -17,7 +17,7 @@ sealed trait AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed): AuctionStateData
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None): AuctionStateData
+  def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None): AuctionStateData
 
   def restartAuction(auction: Auction): AuctionStateData
 }
@@ -29,7 +29,7 @@ case object InactiveAuction extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
+  def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 
   def restartAuction(auction: Auction) = this
 }
@@ -40,26 +40,35 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
   def scheduleAuction(auction: Auction) = ActiveAuction(auction)
 
   def closeAuction(ac: AuctionClosed) = {
+    val isSold = auction match {
+      case a if a.bids.isEmpty => false // No Bid(s) -> no winner
+      case a if a.reservePrice.isEmpty => true // Bid(s), no reserve price -> a winner
+      case a if a.currentPrice >= a.reservePrice.get => true // Bid(s), a current price >= reserve price -> a winner
+      case _ => false // Bid(s), a current price < reserve price -> no winner
+    }
+
     val updatedAuction = auction.copy(
       closedBy = Some(ac.closedBy),
       closedAt = Some(ac.createdAt),
       originalStock = auction.stock,
       stock = 0,
       renewalCount = auction.renewalCount + 1,
-      cloneParameters = ac.cloneParameters
+      cloneParameters = ac.cloneParameters,
+      isSold = isSold
     )
 
     FinishedAuction(updatedAuction)
   }
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = {
+  def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = {
     val updatedAuction = auction.copy(
       bids = bids ++ auction.bids,
       endsAt = updatedEndsAt,
       currentPrice = updatedCurrentPrice,
       stock = updatedStock,
       originalStock = updatedOriginalStock,
-      closedBy = updatedClosedBy
+      closedBy = updatedClosedBy,
+      isSold = isSold
     )
 
     if (updatedStock == 0)
@@ -83,7 +92,7 @@ case class FinishedAuction(auction: Auction) extends AuctionStateData {
 
   def closeAuction(auctionClosed: AuctionClosed) = this
 
-  def placeBids(bids: Seq[Bid], updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
+  def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 
   def restartAuction(auction: Auction) = this
 }
