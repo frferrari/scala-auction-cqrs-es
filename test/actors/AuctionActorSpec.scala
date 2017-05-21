@@ -11,7 +11,6 @@ import cqrs.UsersBid
 import cqrs.commands.{PlaceBid, ScheduleAuction}
 import models.{Auction, AuctionType, BidRejectionReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
-import play.api.Logger
 
 import scala.concurrent.duration._
 
@@ -53,7 +52,8 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
   "An AUCTION w/o reserve price" should {
 
     val auctionActor = AuctionActor.createAuctionActor()
-    val auction = getScheduledAuction(0.10, 0.10, 60)
+
+    val auction = getScheduledAuction(startPrice = 0.10, bidIncrement = 0.10, lastsSeconds = 20)
     auctionActor ! ScheduleAuction(auction)
 
     "reject a bid on an auction not yet started" in {
@@ -91,7 +91,8 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
 
     "accept a first bid from bidderA" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 4.00, Instant.now()))
-      expectMsg(BidPlacedWithInfoReply(auction.auctionId, auction.stock, auction.currentPrice, 1, Some(bidderAUUID), Some(4.00)))
+      // expectMsg(BidPlacedWithInfoReply(auction.auctionId, auction.stock, auction.currentPrice, 1, Some(bidderAUUID), Some(4.00)))
+      expectMsg(BidPlacedReply)
     }
 
     "reject a bid from a user who's the current winner (bidderA) with a bid value lower than this user's max price" in {
@@ -101,21 +102,38 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
       }
     }
 
-    //
-    //    "accept a bid from a user who's the current winner (bidderA) and who wants to raise his maximum price" in {
-    //      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 6.00, Instant.now()))
-    //      expectMsgPF() {
-    //        case _: BidPlacedWithInfoReply => ()
-    //      }
-    //    }
-    //
-    //    "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price" in {
-    //      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 4.00, Instant.now()))
-    //      expectMsgPF() {
-    //        case bpr: BidPlacedWithInfoReply =>
-    //          Logger.info(s"--------- $bpr")
-    //          ()
-    //      }
-    //    }
+    "accept a bid from a user who's the current winner (bidderA) and who wants to raise his maximum price" in {
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 6.00, Instant.now()))
+      expectMsg(BidPlacedReply)
+    }
+
+    "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (4.00), bidderA is still the winner" in {
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 4.00, Instant.now()))
+      expectMsg(BidPlacedReply)
+    }
+
+    "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (5.00), bidderA is still the winner" in {
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 5.00, Instant.now()))
+      expectMsg(BidPlacedReply)
+    }
+
+    "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (6.00), bidderA is still the winner" in {
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.00, Instant.now()))
+      expectMsg(BidPlacedReply)
+    }
+
+    "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (6.20), bidderB is the new winner" in {
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.20, Instant.now()))
+      expectMsg(BidPlacedReply)
+    }
+
+    "Reject a bid after auction has ended" in {
+      expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
+
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.80, Instant.now()))
+      expectMsgPF() {
+        case BidRejectedReply(_, BidRejectionReason.AUCTION_HAS_ENDED) => ()
+      }
+    }
   }
 }

@@ -4,9 +4,9 @@ import java.time.Instant
 import java.util.UUID
 
 import cqrs.UsersBid
-import cqrs.commands.CloseAuction
+import cqrs.commands.{CloseAuction, CloseAuctionByTimer}
 import models.AuctionReason.AuctionReason
-import models.{Auction, CloneParameters}
+import models.{Auction, AuctionReason, CloneParameters}
 
 /**
   * Created by francois on 13/05/17.
@@ -29,6 +29,7 @@ case class AuctionClosed(auctionId: UUID,
 
 object AuctionClosed {
   def apply(cmd: CloseAuction) = new AuctionClosed(cmd.auctionId, cmd.closedBy, cmd.reason, cmd.comment, cmd.createdAt)
+  def apply(evt: CloseAuctionByTimer) = new AuctionClosed(evt.auction.auctionId, UUID.randomUUID(), AuctionReason.CLOSED_BY_TIMER, "", Instant.now())
 }
 
 case class AuctionRenewed(auctionId: UUID,

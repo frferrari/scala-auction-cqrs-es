@@ -5,5 +5,7 @@ package models
   */
 object AuctionReason extends Enumeration {
   type AuctionReason = Value
-  val BID_NO_REMAINING_STOCK, RESUMED_WITH_BIDS = Value
+  val BID_NO_REMAINING_STOCK,
+  RESUMED_WITH_BIDS,
+  CLOSED_BY_TIMER = Value
 }

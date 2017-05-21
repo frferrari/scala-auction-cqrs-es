@@ -89,7 +89,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
     case Event(evt: ScheduleAuction, _) =>
       goto(ScheduledState) applying AuctionScheduled(evt.auction) replying AuctionScheduledReply andThen {
-        case ActiveAuction(auction) => startTimer(auction)
+        case ActiveAuction(auction) => startScheduleTimer(auction)
       }
   }
 
@@ -104,10 +104,14 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(ScheduledState) {
     case Event(evt: StartAuction, _) =>
-      goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
+      goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply andThen {
+        case ActiveAuction(auction) => startCloseTimer(auction)
+      }
 
     case Event(evt: StartAuctionByTimer, _) =>
-      goto(StartedState) applying AuctionStarted(evt.auction)
+      goto(StartedState) applying AuctionStarted(evt.auction) andThen {
+        case ActiveAuction(auction) => startCloseTimer(auction)
+      }
 
     case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
@@ -168,7 +172,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        stay applying BidPlaced(normalizedUsersBid)
+        stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
+          case ActiveAuction(auction) => startCloseTimer(auction)
+        }
+
         // stay applying BidPlaced(normalizedUsersBid) replying bidPlacedWithInfoReply(stateData) // BidPlacedReply(stateData)
         // TODO How to reply with the stateData resulting from the event application ? Is this an acceptable alternative way ?
         //        applyEvent(BidPlaced(normalizedUsersBid), stateData) match {
@@ -180,9 +187,6 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.nonEmpty =>
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
-
-      Logger.info(s"++++++++ Event $normalizedUsersBid ////// $auction")
-      Logger.info(s"++++++++ Event bidderId ${normalizedUsersBid.bidderId} bidPrice ${normalizedUsersBid.bidPrice} highestBidderId ${auction.bids.head.bidderId} bidMaxPrice ${auction.bids.head.bidMaxPrice}")
 
       // A seller cannot bid on its own auctions
       if (normalizedUsersBid.bidderId == auction.sellerId) {
@@ -222,7 +226,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
       // Validated bid
       else {
-        stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply(stateData)
+        stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
+          case ActiveAuction(auction) => startCloseTimer(auction)
+        }
       }
 
     // A bid was placed on a fixed price auction
@@ -278,6 +284,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
     case Event(evt: CloseAuction, ActiveAuction(_)) =>
       goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
+
+    case Event(evt: CloseAuctionByTimer, _) =>
+      goto(ClosedState) applying AuctionClosed(evt)
   }
 
   //
@@ -391,7 +400,6 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     )
 
     val stateDataAfter = stateDataBefore.placeBids(List(bid), endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
-    Logger.info(s":::::: stateDataAfter $stateDataAfter")
     stateDataAfter
   }
 
@@ -613,16 +621,16 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     * @param auction The auction for which to generate a time name
     * @return
     */
-  def getTimerName(auction: Auction): String = s"timer-${auction.auctionId}"
+  def getTimerName(prefix: String, auction: Auction): String = s"$prefix-${auction.auctionId}"
 
   /**
-    * Starts a timer that will send a StartAuction message at the startsAt time of a given auction
-    * The timer is started immediatly if the startsAt is in the past
+    * Starts a timer that will send a StartAuctionByTimer message at the given auction's startsAt time
+    * The timer is started immediately if the startsAt is in the past
     *
     * @param auction The auction to start a timer on
     * @return The time name
     */
-  def startTimer(auction: Auction): String = {
+  def startScheduleTimer(auction: Auction): String = {
     // TODO Check if it is needed to control whether or not the auction is closed (closedBy, closedAt ...)
     //      If the startsAt is in the past, then realign startsAt/endsAt based on now()
     val secondsToWait = auction.startsAt.getEpochSecond - Instant.now().getEpochSecond match {
@@ -630,9 +638,30 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       case _ => 0
     }
 
-    val timerName = getTimerName(auction)
-    setTimer(getTimerName(auction), StartAuctionByTimer(auction), secondsToWait.seconds, repeat = false)
-    Logger.debug(s"Starting timer for Auction ${auction.auctionId}")
+    val timerName = getTimerName("schedule", auction)
+    setTimer(timerName, StartAuctionByTimer(auction), secondsToWait.seconds, repeat = false)
+    Logger.debug(s"Starting timer $timerName for Auction ${auction.auctionId}")
+    timerName
+  }
+
+  /**
+    * Starts a timer that will send a CloseAuctionByTimer message at the given auction's endsAt time
+    * The timer is started immediately if the endsAt is in the past
+    *
+    * @param auction The auction to start a timer on
+    * @return The time name
+    */
+  def startCloseTimer(auction: Auction): String = {
+    // TODO Check if it is needed to control whether or not the auction is closed (closedBy, closedAt ...)
+    //      If the startsAt is in the past, then realign startsAt/endsAt based on now()
+    val secondsToWait = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond match {
+      case stw if stw >= 0 => stw
+      case _ => 0
+    }
+
+    val timerName = getTimerName("close", auction)
+    setTimer(timerName, CloseAuctionByTimer(auction), secondsToWait.seconds, repeat = false)
+    Logger.debug(s"Starting timer $timerName for Auction ${auction.auctionId} in $secondsToWait seconds")
     timerName
   }
 
@@ -655,8 +684,6 @@ object AuctionActor {
   object BidPlacedReply {
     def apply(stateData: => AuctionStateData) = stateData match {
       case ActiveAuction(auction) =>
-        Logger.info(s"BidPlacedReply.apply(stateData) ============== auction=$auction")
-
         new BidPlacedWithInfoReply(
           auctionId = auction.auctionId,
           stock = auction.stock,

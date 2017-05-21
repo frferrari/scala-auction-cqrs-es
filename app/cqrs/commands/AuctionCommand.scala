@@ -27,6 +27,7 @@ case class CloseAuction(auctionId: UUID,
                         comment: String,
                         createdAt: Instant
                        ) extends AuctionCommand
+case class CloseAuctionByTimer(auction: Auction) extends AuctionCommand
 
 case class RenewAuction(auctionId: UUID,
                         renewedBy: UUID,
