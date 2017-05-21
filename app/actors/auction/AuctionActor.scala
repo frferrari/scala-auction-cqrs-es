@@ -329,6 +329,11 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       goto(ClosedState) applying AuctionClosed(auctionId, getSystemUserId, AuctionReason.RESUMED_WITH_BIDS, "", Instant.now(), Some(cloneParameters))
   }
 
+  whenUnhandled {
+    case Event(GetCurrentState, stateData) =>
+      stay replying CurrentStateReply(stateName, stateData)
+  }
+
   //
   //
   //
@@ -362,8 +367,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // A bid was placed on a fixed price auction
       applyBidPlacedEventOnFixedPriceAuction(bidPlaced, activeAuction)
 
-    case (ac@AuctionClosed(auctionId, closedBy, reason, comment, createdAt, Some(cloneParameters)), ActiveAuction(auction)) =>
-      stateDataBefore.closeAuction(ac)
+    case (auctionClosed: AuctionClosed, stateData: ActiveAuction) =>
+      stateDataBefore.closeAuction(auctionClosed)
 
     case (e, s) =>
       // Unhandled case
@@ -705,6 +710,8 @@ object AuctionActor {
                                    ) extends BidPlacedReply
 
   case class BidRejectedReply(usersBid: UsersBid, reason: BidRejectionReason)
+
+  case class CurrentStateReply(state: AuctionState, stateData: AuctionStateData)
 
   def props = Props(new AuctionActor)
 

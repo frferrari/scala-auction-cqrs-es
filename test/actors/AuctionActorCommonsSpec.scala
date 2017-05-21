@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.UUID
 
 import akka.testkit.TestKit
-import models.Auction
+import models.{Auction, Bid}
 import play.api.Logger
 
 /**
@@ -20,4 +20,6 @@ trait AuctionActorCommonsSpec {
   def instantNow: Instant = Instant.now()
 
   def secondsToWaitForAuctionEnd(auction: Auction, gap: Long = 5): Long = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond + gap
+
+  def bidEssentials(bids: Seq[Bid]): Seq[(UUID, Int, BigDecimal, BigDecimal, Boolean, Boolean, Boolean)] = bids.map(bid => (bid.bidderId, bid.requestedQty, bid.bidPrice, bid.bidMaxPrice, bid.isVisible, bid.isAuto, bid.timeExtended))
 }

@@ -63,7 +63,9 @@ case class CloneAuction(parentAuction: Auction,
                         stock: Int,
                         startsAt: Instant,
                         createdAt: Instant
-                       )
+                       ) extends AuctionCommand
 object CloneAuction {
   def apply(parentAucton: Auction, stock: Int, createdAt: Instant) = new CloneAuction(parentAucton, stock, createdAt, createdAt)
 }
+
+case object GetCurrentState extends AuctionCommand

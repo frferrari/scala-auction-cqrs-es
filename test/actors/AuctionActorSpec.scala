@@ -5,10 +5,11 @@ import java.util.UUID
 
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
+import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
-import cqrs.commands.{PlaceBid, ScheduleAuction}
+import cqrs.commands.{GetCurrentState, PlaceBid, ScheduleAuction}
 import models.{Auction, AuctionType, BidRejectionReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 
@@ -91,8 +92,18 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
 
     "accept a first bid from bidderA" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 4.00, Instant.now()))
-      // expectMsg(BidPlacedWithInfoReply(auction.auctionId, auction.stock, auction.currentPrice, 1, Some(bidderAUUID), Some(4.00)))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == auction.startPrice &&
+            auction.bids.length == 1 &&
+            auction.bids.head.bidPrice == auction.startPrice &&
+            auction.bids.head.bidMaxPrice == 4.0 &&
+            auction.bids.head.bidderId == bidderAUUID
+        => ()
+      }
     }
 
     "reject a bid from a user who's the current winner (bidderA) with a bid value lower than this user's max price" in {
@@ -105,26 +116,116 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
     "accept a bid from a user who's the current winner (bidderA) and who wants to raise his maximum price" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 6.00, Instant.now()))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == auction.startPrice &&
+            auction.bids.length == 2 &&
+            auction.bids.head.bidPrice == auction.startPrice &&
+            auction.bids.head.bidMaxPrice == 6.0 &&
+            auction.bids.head.bidderId == bidderAUUID
+        => ()
+      }
     }
 
     "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (4.00), bidderA is still the winner" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 4.00, Instant.now()))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderAUUID, 1, 4.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 4.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 0.1, 6.0, false, false, false),
+        (bidderAUUID, 1, 0.1, 4.0, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == 4.00 &&
+            auction.bids.head.bidPrice == 4.00 &&
+            auction.bids.head.bidMaxPrice == 6.0 &&
+            auction.bids.head.bidderId == bidderAUUID &&
+            bidEssentials(auction.bids) == expectedBidEssentials
+        => ()
+      }
     }
 
     "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (5.00), bidderA is still the winner" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 5.00, Instant.now()))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderAUUID, 1, 5.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 5.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 4.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 4.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 0.1, 6.0, false, false, false),
+        (bidderAUUID, 1, 0.1, 4.0, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == 5.00 &&
+            auction.bids.head.bidPrice == 5.00 &&
+            auction.bids.head.bidMaxPrice == 6.0 &&
+            auction.bids.head.bidderId == bidderAUUID &&
+            bidEssentials(auction.bids) == expectedBidEssentials
+        => ()
+      }
     }
 
     "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (6.00), bidderA is still the winner" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.00, Instant.now()))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderAUUID, 1, 6.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 6.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 5.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 5.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 4.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 4.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 0.1, 6.0, false, false, false),
+        (bidderAUUID, 1, 0.1, 4.0, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == 6.00 &&
+            auction.bids.head.bidPrice == 6.00 &&
+            auction.bids.head.bidMaxPrice == 6.0 &&
+            auction.bids.head.bidderId == bidderAUUID &&
+            bidEssentials(auction.bids) == expectedBidEssentials
+        => ()
+      }
     }
 
     "accept a bid from bidderB with a bid value lower than the current highest bidder, should raise the currentPrice to bidderB's bid price (6.20), bidderB is the new winner" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.20, Instant.now()))
       expectMsg(BidPlacedReply)
+
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderBUUID, 1, 6.10, 6.20, true, false, false),
+        (bidderAUUID, 1, 6.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 6.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 5.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 5.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 4.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 4.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 0.1, 6.0, false, false, false),
+        (bidderAUUID, 1, 0.1, 4.0, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(StartedState, ActiveAuction(auction))
+          if auction.currentPrice == 6.10 &&
+            auction.bids.head.bidPrice == 6.10 &&
+            auction.bids.head.bidMaxPrice == 6.20 &&
+            auction.bids.head.bidderId == bidderBUUID &&
+            bidEssentials(auction.bids) == expectedBidEssentials
+        => ()
+      }
     }
 
     "Reject a bid after auction has ended" in {
@@ -133,6 +234,31 @@ class AuctionActorSpec() extends TestKit(ActorSystem("AuctionActorSpec"))
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderBName, bidderBUUID, 1, 6.80, Instant.now()))
       expectMsgPF() {
         case BidRejectedReply(_, BidRejectionReason.AUCTION_HAS_ENDED) => ()
+      }
+    }
+
+    "be in CLOSED state with bidderB as the auction's winner" in {
+      auctionActor ! GetCurrentState
+      val expectedBidEssentials = List(
+        (bidderBUUID, 1, 6.10, 6.20, true, false, false),
+        (bidderAUUID, 1, 6.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 6.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 5.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 5.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 4.0, 6.0, true, true, false),
+        (bidderBUUID, 1, 4.0, 6.0, true, false, false),
+        (bidderAUUID, 1, 0.1, 6.0, false, false, false),
+        (bidderAUUID, 1, 0.1, 4.0, true, false, false)
+      )
+      expectMsgPF() {
+        case CurrentStateReply(ClosedState, FinishedAuction(auction))
+          if auction.currentPrice == 6.10 &&
+            auction.bids.head.bidPrice == 6.10 &&
+            auction.bids.head.bidMaxPrice == 6.20 &&
+            auction.bids.head.bidderId == bidderBUUID &&
+            bidEssentials(auction.bids) == expectedBidEssentials &&
+            auction.closedBy.isDefined
+        => ()
       }
     }
   }
