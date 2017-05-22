@@ -15,14 +15,14 @@ case object RegisteredState extends UserState {
   override def identifier: String = "Registered"
 }
 
-case object ActivatedState extends UserState {
-  override def identifier: String = "Activated"
+case object ActiveState extends UserState {
+  override def identifier: String = "Active"
 }
 
 case object LockedState extends UserState {
   override def identifier: String = "Locked"
 }
 
-case object UnregisteredState extends UserState {
-  override def identifier: String = "Unregistered"
+case object DeactivatedState extends UserState {
+  override def identifier: String = "Deactivated"
 }

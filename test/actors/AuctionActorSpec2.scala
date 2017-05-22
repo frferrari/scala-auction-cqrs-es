@@ -28,7 +28,6 @@ class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
 
   "An AUCTION W/O reserve price W/automatic renewal W/O bidders" should {
 
-    val auctionActor = AuctionActor.createAuctionActor(Some("test1"))
     val auction = getScheduledAuction(
       startPrice = 0.10,
       bidIncrement = 0.10,
@@ -37,6 +36,7 @@ class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
       hasAutomaticRenewal = true,
       hasTimeExtension = false
     )
+    val auctionActor = AuctionActor.createAuctionActor(auction)
 
     "start an auction in ScheduledState" in {
       auctionActor ! ScheduleAuction(auction)

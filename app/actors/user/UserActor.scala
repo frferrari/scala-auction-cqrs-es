@@ -2,10 +2,14 @@ package actors.user
 
 import java.util.UUID
 
-import actors.user.fsm.{IdleState, InactiveUser, UserState, UserStateData}
-import akka.actor.Actor
+import actors.user.UserActor.{UserActivatedReply, UserRegisteredReply}
+import actors.user.fsm._
+import akka.actor.{Actor, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
+import cqrs.commands.{ActivateUser, RegisterUser}
 import cqrs.events._
+import models.{Auction, User}
+import play.api.Logger
 
 import scala.reflect.{ClassTag, classTag}
 
@@ -19,6 +23,21 @@ class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, Use
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]
 
   startWith(IdleState, InactiveUser)
+
+  when(IdleState) {
+    case Event(cmd: RegisterUser, _) =>
+      goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) replying UserRegisteredReply
+  }
+
+  when(RegisteredState) {
+    case Event(cmd: ActivateUser, _) =>
+      goto(ActiveState) applying UserActivated(cmd.userId, cmd.activatedAt) replying UserActivatedReply
+  }
+
+  when(ActiveState) {
+    case Event(_, _) =>
+      stay
+  }
 
   /**
     *
@@ -36,4 +55,23 @@ class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, Use
 
   // TODO Implement this function
   def getSystemUserId: UUID = UUID.randomUUID()
+}
+
+object UserActor {
+
+  case object UserRegisteredReply
+  case object UserActivatedReply
+
+  case object UserCantPlaceBidsReply
+  case object UserCanPlaceBidsBidReply
+  case object UserCantReceiveBidsReply
+
+  def getActorName(userId: UUID) = s"$userId-${UUID.randomUUID()}"
+
+  def createUserActor(user: User)(implicit system: ActorSystem) = {
+    val name = getActorName(user.userId)
+    Logger.info(s"Creating actor with name $name")
+
+    system.actorOf(Props(new UserActor()), name = name)
+  }
 }

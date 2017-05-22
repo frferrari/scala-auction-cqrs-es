@@ -28,8 +28,8 @@ class FixedPriceAuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpe
 
   "A scheduled FIXED PRICE auction" should {
 
-    val auctionActor = AuctionActor.createAuctionActor()
     val auction = getScheduledFixedPriceAuction(0.10, Instant.now().plusSeconds(2), 5, 10, hasAutomaticRenewal = true)
+    val auctionActor = AuctionActor.createAuctionActor(auction)
     auctionActor ! ScheduleAuction(auction)
 
     "be RESTARTED and NOT SOLD" in {

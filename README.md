@@ -3,7 +3,7 @@
 ### Auction FSM required tests
 
 #### Auction
-
+    
 | ReservePrice? | Renewal? | Bidders | Test file            | Should be                                                                      |
 |---------------|----------|---------|----------------------|--------------------------------------------------------------------------------|
 | Yes           | No       | No      | AuctionActorSpec1    | Closed when end-time is reached, without winner                                |

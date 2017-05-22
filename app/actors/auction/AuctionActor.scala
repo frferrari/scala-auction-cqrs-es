@@ -1,12 +1,14 @@
 package actors.auction
 
-import java.time.Instant
+import java.time.{Instant, LocalDate}
 import java.util.UUID
 
 import actors.auction.AuctionActor._
 import actors.auction.fsm._
+import actors.user.UserActor
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
+import akka.persistence.fsm.PersistentFSM.SubscribeTransitionCallBack
 import cqrs.UsersBid
 import cqrs.commands._
 import cqrs.events._
@@ -27,17 +29,58 @@ object Test {
     Logger.info("Main is starting")
 
     implicit val system = ActorSystem("andycotSystem")
-    val auctionActorRef: ActorRef = AuctionActor.createAuctionActor()
+
+    val sellerA = User(
+      userId = UUID.randomUUID(),
+      email = "",
+      password = "",
+      isSuperAdmin = false,
+      receivesNewsletter = false,
+      receivesRenewals = false,
+      currency = "EUR",
+      nickname = "sellerA",
+      lastName = "Eponge",
+      firstName = "Bob",
+      lang = "fr",
+      avatar = "",
+      dateOfBirth = LocalDate.of(2000,1,1),
+      phone = "",
+      mobile = "",
+      fax = "",
+      description = "",
+      sendingCountry = "",
+      invoiceName = "",
+      invoiceAddress1 = "",
+      invoiceAddress2 = "",
+      invoiceZipCode = "",
+      invoiceCity = "",
+      invoiceCountry = "",
+      vatIntra = "",
+      holidayStartAt = None,
+      holidayEndAt = None,
+      holidayHideId = UUID.randomUUID(),
+      bidIncrement = 0.10,
+      listedTimeId = UUID.randomUUID(),
+      slug = "",
+      watchedAuctions = Nil,
+      activatedAt = Some(Instant.now()),
+      lockedAt = None,
+      lastLoginAt = None,
+      unregisteredAt = None,
+      createdAt = Instant.now(),
+      updatedAt = None
+    )
+
+    val (sellerAName, sellerAActor) = ("sellerA", UserActor.createUserActor(sellerA))
 
     val (bidderAName, bidderAUUID) = ("francois", UUID.randomUUID())
-    val (sellerAName, sellerAUUID) = ("emmanuel", UUID.randomUUID())
 
     val instantNow = Instant.now()
 
     val auction = Auction(
       UUID.randomUUID(),
       None, None, None,
-      sellerAUUID,
+      sellerA.userId,
       UUID.randomUUID(), UUID.randomUUID(), AuctionType.AUCTION,
       "Eiffel tower", "", 2010,
       UUID.randomUUID(), Nil, Nil, None,
@@ -55,10 +98,14 @@ object Test {
       instantNow
     )
 
+    val auctionActorRef: ActorRef = AuctionActor.createAuctionActor(auction)
+
     // auctionActor ! ScheduleAuction(auction)
     auctionActorRef ! StartAuction(auction)
     // auctionActor ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
     auctionActorRef ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+
+    sellerAActor ! RegisterUser(sellerA, Instant.now())
 
     Thread.sleep(60000)
 
@@ -69,11 +116,20 @@ object Test {
 class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] {
   val msToExtend = 5000
 
+  // Updated by a subscription to UserLocked/UserUnlocked events
+  var sellerLocked: Boolean = false
+
   override def persistenceId: String = self.path.name
 
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
   startWith(fsm.IdleState, InactiveAuction)
+
+//  override def preStart(): Unit = {
+//    context.system.actorSelection("user-")
+//    context.system.eventStream.subscribe(self, classOf[UserLocked])
+//    context.system.eventStream.subscribe(self, classOf[UserUnlocked])
+//  }
 
   //
   // 	  ###   ######  #       #######
@@ -86,6 +142,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(fsm.IdleState) {
     case Event(evt: StartAuction, _) =>
+      subscribeUserEvents(evt.auction)
       goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
 
     case Event(evt: ScheduleAuction, _) =>
@@ -105,11 +162,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   when(ScheduledState) {
     case Event(evt: StartAuction, _) =>
+      subscribeUserEvents(evt.auction)
       goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply andThen {
         case ActiveAuction(auction) => startCloseTimer(auction)
       }
 
     case Event(evt: StartAuctionByTimer, _) =>
+      subscribeUserEvents(evt.auction)
       goto(StartedState) applying AuctionStarted(evt.auction) andThen {
         case ActiveAuction(auction) => startCloseTimer(auction)
       }
@@ -147,10 +206,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       else if (!canReceiveBids(auction.sellerId)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
-      // Is the bidder allowed to bid ?
-      else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      }
+      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
+      // else if (!canBid(normalizedUsersBid.bidderId)) {
+      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      // }
       // Bidding after the end time of an auction is not allowed
       else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
@@ -197,10 +256,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       else if (!canReceiveBids(auction.sellerId)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
-      // Is the bidder allowed to bid ?
-      else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      }
+      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
+      // else if (!canBid(normalizedUsersBid.bidderId)) {
+      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      // }
       // Bidding after the end time of an auction is not allowed
       else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
@@ -345,6 +404,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   //
   onTransition {
+//    case _ -> UserLocked =>
+//      sellerLocked = true
+
     case from -> to =>
       Logger.info(s"Transitioning from $from to $to")
   }
@@ -609,6 +671,20 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   }
 
   /**
+    *
+    * @param auction
+    */
+  def subscribeUserEvents(auction: Auction) = {
+    val userActorName = UserActor.getActorName(auction.sellerId)
+    val userActor = context.system.actorSelection(userActorName)
+
+    // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
+    userActor ! SubscribeTransitionCallBack(self)
+
+    // TODO UnsubscribeTransitionCallback
+  }
+
+  /**
     * Aligns the users's bid price to the auction's bidIncrement boundaries
     *
     * @param usersBid The users's bid
@@ -741,10 +817,12 @@ object AuctionActor {
     BigDecimal((bidPrice / bidIncrement).toInt) * bidIncrement
   }
 
-  def createAuctionActor(maybeActorName: Option[String] = None)(implicit system: ActorSystem) = {
-    val actorName = maybeActorName.getOrElse(s"auction-${UUID.randomUUID()}")
-    Logger.info(s"Creating actor with name $actorName")
+  def getActorName(auctionId: UUID): String = s"$auctionId-${UUID.randomUUID()}"
 
-    system.actorOf(Props(new AuctionActor()), name = actorName)
+  def createAuctionActor(auction: Auction)(implicit system: ActorSystem): ActorRef = {
+    val name = getActorName(auction.auctionId)
+    Logger.info(s"Creating actor with name $name")
+
+    system.actorOf(Props(new AuctionActor()), name = name)
   }
 }

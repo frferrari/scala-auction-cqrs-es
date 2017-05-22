@@ -29,7 +29,6 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
 
   "An AUCTION W/reserve price W/1 bidder lower than the reserve price" should {
 
-    val auctionActor = AuctionActor.createAuctionActor()
     val auction = getScheduledAuction(
       startPrice = 0.10,
       bidIncrement = 0.10,
@@ -39,6 +38,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
       hasTimeExtension = false,
       Some(8)
     )
+    val auctionActor = AuctionActor.createAuctionActor(auction)
 
     "schedule and start an auction" in {
       auctionActor ! ScheduleAuction(auction)
