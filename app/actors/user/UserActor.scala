@@ -4,9 +4,9 @@ import java.util.UUID
 
 import actors.user.UserActor.{UserActivatedReply, UserRegisteredReply}
 import actors.user.fsm._
-import akka.actor.{Actor, ActorSystem, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
-import cqrs.commands.{ActivateUser, RegisterUser}
+import cqrs.commands.{ActivateUser, LockUser, RegisterUser}
 import cqrs.events._
 import models.{Auction, User}
 import play.api.Logger
@@ -26,17 +26,25 @@ class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, Use
 
   when(IdleState) {
     case Event(cmd: RegisterUser, _) =>
-      goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) replying UserRegisteredReply
+      goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) // replying UserRegisteredReply
   }
 
   when(RegisteredState) {
     case Event(cmd: ActivateUser, _) =>
-      goto(ActiveState) applying UserActivated(cmd.userId, cmd.activatedAt) replying UserActivatedReply
+      goto(ActiveState) applying UserActivated(cmd.userId, cmd.activatedAt) // replying UserActivatedReply
+
+    case Event(cmd: LockUser, _) =>
+      goto(LockedState) applying UserLocked(cmd.userId, cmd.reason, cmd.lockedBy, cmd.lockedAt)
   }
 
   when(ActiveState) {
     case Event(_, _) =>
       stay
+  }
+
+  when(LockedState) {
+    case Event(_, _) =>
+      goto(ActiveState)
   }
 
   /**
@@ -66,12 +74,14 @@ object UserActor {
   case object UserCanPlaceBidsBidReply
   case object UserCantReceiveBidsReply
 
-  def getActorName(userId: UUID) = s"$userId-${UUID.randomUUID()}"
+  def getActorName(userId: UUID) = s"user-$userId"
 
   def createUserActor(user: User)(implicit system: ActorSystem) = {
     val name = getActorName(user.userId)
     Logger.info(s"Creating actor with name $name")
 
-    system.actorOf(Props(new UserActor()), name = name)
+    val actorRef: ActorRef = system.actorOf(Props(new UserActor()), name = name)
+    Logger.info(s"UserActor $name created with actorPath ${actorRef.path.toString}")
+    actorRef
   }
 }

@@ -20,6 +20,13 @@ concurrentRestrictions in Global := Seq(
   Tags.limitAll( 1 )
 )
 
+// sbt-scoverage
+// sbt clean coverage test
+// sbt coverageReport
+coverageExcludedPackages := "<empty>"
+// coverageMinimum := 80
+// coverageFailOnMinimum := true
+
 resolvers += Resolver.jcenterRepo
 
 libraryDependencies ++= Seq(
