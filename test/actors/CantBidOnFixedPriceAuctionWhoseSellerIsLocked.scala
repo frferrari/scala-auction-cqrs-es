@@ -78,6 +78,8 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLocked extends TestKit(ActorSystem(
             finishedAuction.isSold
         => ()
       }
+
+      expectNoMsg(2.seconds)
     }
   }
 }

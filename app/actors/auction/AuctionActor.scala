@@ -44,7 +44,7 @@ object Test {
       firstName = "Bob",
       lang = "fr",
       avatar = "",
-      dateOfBirth = LocalDate.of(2000,1,1),
+      dateOfBirth = LocalDate.of(2000, 1, 1),
       phone = "",
       mobile = "",
       fax = "",
@@ -124,28 +124,27 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   val msToExtend = 5000
 
   // Updated by a subscription to the seller's actor transition events
-  var sellerLocked: Boolean = false
+  var gSellerLocked: Boolean = false
   // sellerActorName is of type "/user/user-e76988bb-d8e6-4e46-86ea-d41ca460139a"
-  var sellerActorName: String = ""
-  var sellerId: Option[UUID] = None
-  var hasSubscribedCallBackToSeller: Boolean = false
+  var gSellerActorName: String = ""
+  var gSellerId: Option[UUID] = None
+  var gHasSubscribedToUserEvents: Boolean = false
 
   override def persistenceId: String = self.path.name
 
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
-  override def postStop(): Unit = (hasSubscribedCallBackToSeller, sellerId) match {
-    case (true, Some(sid)) => unsubscribeUserEvents(sid)
-    case _ =>
+  override def postStop(): Unit = {
+    unsubscribeUserEvents
   }
 
   startWith(fsm.IdleState, InactiveAuction)
 
-//  override def preStart(): Unit = {
-//    context.system.actorSelection("user-")
-//    context.system.eventStream.subscribe(self, classOf[UserLocked])
-//    context.system.eventStream.subscribe(self, classOf[UserUnlocked])
-//  }
+  //  override def preStart(): Unit = {
+  //    context.system.actorSelection("user-")
+  //    context.system.eventStream.subscribe(self, classOf[UserLocked])
+  //    context.system.eventStream.subscribe(self, classOf[UserUnlocked])
+  //  }
 
   //
   // 	  ###   ######  #       #######
@@ -162,12 +161,12 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       subscribeUserEvents(evt.auction)
 
       // Keep the sellerId
-      sellerId = Some(evt.auction.sellerId)
+      gSellerId = Some(evt.auction.sellerId)
 
       goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
 
     case Event(evt: ScheduleAuction, _) =>
-      sellerId = Some(evt.auction.sellerId)
+      gSellerId = Some(evt.auction.sellerId)
 
       goto(ScheduledState) applying AuctionScheduled(evt.auction) replying AuctionScheduledReply andThen {
         case ActiveAuction(auction) => startScheduleTimer(auction)
@@ -237,7 +236,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
       }
       // Bidding on an auction whose owner is locked in not allowed
-      else if (sellerLocked) {
+      else if (gSellerLocked) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
       // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
@@ -287,7 +286,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
       }
       // Bidding on an auction whose owner is locked in not allowed
-      else if (sellerLocked) {
+      else if (gSellerLocked) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
       // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
@@ -335,7 +334,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
       }
       // Bidding on an auction whose owner is locked in not allowed
-      else if (sellerLocked) {
+      else if (gSellerLocked) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
       // Is the bidder allowed to bid ?
@@ -425,22 +424,22 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case Event(GetCurrentState, stateData) =>
       stay replying CurrentStateReply(stateName, stateData)
 
-    case Event(currentState @ CurrentState(actorRef, state, _), stateData) if actorRef.path.toStringWithoutAddress == sellerActorName =>
-      sellerLocked = if (state == LockedState) true else false
-      val sellerState = if (sellerLocked) "LOCKED" else "UNLOCKED"
+    case Event(currentState@CurrentState(actorRef, state, _), stateData) if actorRef.path.toStringWithoutAddress == gSellerActorName =>
+      gSellerLocked = if (state == LockedState) true else false
+      val sellerState = if (gSellerLocked) "LOCKED" else "UNLOCKED"
       Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has received a CurrentState event from Seller ${actorRef.path.toStringWithoutAddress}, the seller is in $sellerState state")
       stay
 
-    case Event(transition @ Transition(actorRef, fromState, toState, _), stateData) if actorRef.path.toStringWithoutAddress == sellerActorName =>
+    case Event(transition@Transition(actorRef, fromState, toState, _), stateData) if actorRef.path.toStringWithoutAddress == gSellerActorName =>
       Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has received a Transition event from Seller ${actorRef.path.toStringWithoutAddress} : $fromState to $toState state")
 
       (fromState, toState) match {
         case (_, LockedState) =>
-          sellerLocked = true
+          gSellerLocked = true
           Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} LOCKING the seller")
 
         case (LockedState, _) =>
-          sellerLocked = false
+          gSellerLocked = false
           Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} UNLOCKING the seller")
 
         case (_, _) =>
@@ -452,6 +451,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   //
   onTransition {
+    case _ -> ClosedState =>
+      unsubscribeUserEvents
+
     case from -> to =>
       Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} Transitioning from $from to $to")
   }
@@ -721,29 +723,32 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     */
   def subscribeUserEvents(auction: Auction) = {
     val userActorName: String = UserActor.getActorName(auction.sellerId)
-    sellerActorName = s"/user/$userActorName"
-    val userActor: ActorSelection = context.system.actorSelection(sellerActorName)
+    gSellerActorName = s"/user/$userActorName"
+    val userActor: ActorSelection = context.system.actorSelection(gSellerActorName)
 
     // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
     userActor ! SubscribeTransitionCallBack(self)
-    hasSubscribedCallBackToSeller = true
-    Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has SUBSCRIBED to $sellerActorName Transition events")
+    gHasSubscribedToUserEvents = true
+    Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has SUBSCRIBED to $gSellerActorName Transition events")
   }
 
   /**
     *
-    * @param sellerId The auction's sellerId
     */
-  def unsubscribeUserEvents(sellerId: UUID) = {
-    val userActorName: String = UserActor.getActorName(sellerId)
-    sellerActorName = s"/user/$userActorName"
-    val userActor: ActorSelection = context.system.actorSelection(sellerActorName)
+  def unsubscribeUserEvents = (gHasSubscribedToUserEvents, gSellerId) match {
+    case (true, Some(sellerId)) =>
+      val userActorName: String = UserActor.getActorName(sellerId)
+      gSellerActorName = s"/user/$userActorName"
+      val userActor: ActorSelection = context.system.actorSelection(gSellerActorName)
 
-    // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
-    userActor ! UnsubscribeTransitionCallBack(self)
+      // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
+      userActor ! UnsubscribeTransitionCallBack(self)
 
-    hasSubscribedCallBackToSeller = false
-    Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has UNSUBSCRIBED to $sellerActorName Transition events")
+      gHasSubscribedToUserEvents = false
+      gSellerId = None
+      Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has UNSUBSCRIBED to $gSellerActorName Transition events")
+
+    case _ =>
   }
 
   /**
