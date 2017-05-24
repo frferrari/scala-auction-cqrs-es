@@ -16,7 +16,7 @@ case class User(userId: UUID,
 
                 currency: String,
 
-                nickname: String,
+                nickName: String,
                 lastName: String,
                 firstName: String,
                 lang: String,

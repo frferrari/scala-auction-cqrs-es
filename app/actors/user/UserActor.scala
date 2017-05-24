@@ -38,6 +38,9 @@ class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, Use
   }
 
   when(ActiveState) {
+    case Event(cmd: LockUser, _) =>
+      goto(LockedState) applying UserLocked(cmd.userId, cmd.reason, cmd.lockedBy, cmd.lockedAt)
+
     case Event(_, _) =>
       stay
   }
@@ -68,10 +71,13 @@ class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, Use
 object UserActor {
 
   case object UserRegisteredReply
+
   case object UserActivatedReply
 
   case object UserCantPlaceBidsReply
+
   case object UserCanPlaceBidsBidReply
+
   case object UserCantReceiveBidsReply
 
   def getActorName(userId: UUID) = s"user-$userId"

@@ -5,5 +5,6 @@ package models
   */
 object UserReason extends Enumeration {
   type UserReason = Value
-  val USER_UNREGISTRATION_REQUEST = Value
+  val USER_UNREGISTRATION_REQUEST,
+  UNPAID_INVOICE = Value
 }

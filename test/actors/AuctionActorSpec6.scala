@@ -17,7 +17,7 @@ import scala.concurrent.duration._
   * Created by Francois FERRARI on 21/05/2017
   */
 class AuctionActorSpec6() extends TestKit(ActorSystem("AuctionActorSpec"))
-  with AuctionActorCommonsSpec
+  with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
   with Matchers
@@ -29,13 +29,14 @@ class AuctionActorSpec6() extends TestKit(ActorSystem("AuctionActorSpec"))
 
   "An AUCTION W/reserve price W/1 bidder equal to the reserve price, he wins at the reserve price value" should {
 
-    val auction = getScheduledAuction(
+    val auction = makeAuction(
       startPrice = 0.10,
       bidIncrement = 0.10,
       startsAt = Instant.now(),
       lastsSeconds = 20,
       hasAutomaticRenewal = false,
       hasTimeExtension = false,
+      sellerAUUID,
       Some(8)
     )
     val auctionActor = AuctionActor.createAuctionActor(auction)

@@ -39,7 +39,7 @@ object Test {
       receivesNewsletter = false,
       receivesRenewals = false,
       currency = "EUR",
-      nickname = "sellerA",
+      nickName = "sellerA",
       lastName = "Eponge",
       firstName = "Bob",
       lang = "fr",
@@ -110,7 +110,7 @@ object Test {
 
     sellerAActor ! RegisterUser(sellerA, Instant.now())
     Thread.sleep(3000)
-    sellerAActor ! LockUser(sellerA.userId, UserReason.USER_UNREGISTRATION_REQUEST, UUID.randomUUID(), Instant.now())
+    sellerAActor ! LockUser(sellerA.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
     Thread.sleep(3000)
     sellerAActor ! UnlockUser(sellerA.userId, Instant.now())
 
@@ -172,6 +172,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       goto(ScheduledState) applying AuctionScheduled(evt.auction) replying AuctionScheduledReply andThen {
         case ActiveAuction(auction) => startScheduleTimer(auction)
       }
+
+    case Event(PlaceBid(usersBid), _) =>
+      stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
   }
 
   //
@@ -221,26 +224,26 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
-      // A seller cannot bid on its own auctions
-      if (normalizedUsersBid.bidderId == auction.sellerId) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
-      }
-      // Bidding on an auction whose owner is locked in not allowed
-      else if (!canReceiveBids(auction.sellerId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
-      }
-      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
-      // else if (!canBid(normalizedUsersBid.bidderId)) {
-      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      // }
       // Bidding after the end time of an auction is not allowed
-      else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
+      if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
       }
       // Bidding on an auction that has not started is not allowed
       else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
       }
+      // A seller cannot bid on its own auctions
+      else if (normalizedUsersBid.bidderId == auction.sellerId) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
+      }
+      // Bidding on an auction whose owner is locked in not allowed
+      else if (sellerLocked) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
+      }
+      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
+      // else if (!canBid(normalizedUsersBid.bidderId)) {
+      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      // }
       // Bidding with an erroneous qty is not allowed
       else if (normalizedUsersBid.requestedQty != 1) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
@@ -271,26 +274,26 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
-      // A seller cannot bid on its own auctions
-      if (normalizedUsersBid.bidderId == auction.sellerId) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
-      }
-      // Bidding on an auction whose owner is locked in not allowed
-      else if (!canReceiveBids(auction.sellerId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
-      }
-      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
-      // else if (!canBid(normalizedUsersBid.bidderId)) {
-      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      // }
       // Bidding after the end time of an auction is not allowed
-      else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
+      if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
       }
       // Bidding on an auction that has not started is not allowed
       else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
       }
+      // A seller cannot bid on its own auctions
+      else if (normalizedUsersBid.bidderId == auction.sellerId) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
+      }
+      // Bidding on an auction whose owner is locked in not allowed
+      else if (sellerLocked) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
+      }
+      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
+      // else if (!canBid(normalizedUsersBid.bidderId)) {
+      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      // }
       // Bidding with an erroneous qty is not allowed
       else if (normalizedUsersBid.requestedQty != 1) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
@@ -319,25 +322,25 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
       val normalizedUsersBid = normalizeUsersBid(usersBid, auction)
 
-      // A seller cannot bid on its own auctions
-      if (normalizedUsersBid.bidderId == auction.sellerId) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
-      }
-      // Bidding on an auction whose owner is locked in not allowed
-      else if (!canReceiveBids(auction.sellerId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
-      }
-      // Is the bidder allowed to bid ?
-      else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      }
       // Bidding after the end time of an auction is not allowed
-      else if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
+      if (normalizedUsersBid.createdAt.isAfter(auction.endsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_HAS_ENDED)
       }
       // Bidding on an auction that has not started is not allowed
       else if (normalizedUsersBid.createdAt.isBefore(auction.startsAt)) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
+      }
+      // A seller cannot bid on its own auctions
+      else if (normalizedUsersBid.bidderId == auction.sellerId) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELF_BIDDING)
+      }
+      // Bidding on an auction whose owner is locked in not allowed
+      else if (sellerLocked) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
+      }
+      // Is the bidder allowed to bid ?
+      else if (!canBid(normalizedUsersBid.bidderId)) {
+        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
       }
       // Bidding with an erroneous qty is not allowed
       else if (normalizedUsersBid.requestedQty < 1) {
@@ -759,9 +762,6 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   def updateCurrentPriceAndBids(stateData: ActiveAuction, newCurrentPrice: BigDecimal, newBids: Seq[Bid]): Auction = {
     stateData.auction.copy(currentPrice = newCurrentPrice, bids = newBids ++ stateData.auction.bids)
   }
-
-  // TODO implement by calling the user's actor
-  def canReceiveBids(sellerId: UUID) = true
 
   // TODO implement
   def canBid(bidderId: UUID) = true // TODO implement
