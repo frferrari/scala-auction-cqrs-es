@@ -367,6 +367,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
             goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying AuctionClosedReply(AuctionReason.BID_NO_REMAINING_STOCK)
         }
       }
+
     case Event(evt: CloseAuction, ActiveAuction(_)) =>
       goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
 
@@ -377,6 +378,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       }
 
     case Event(evt: CloseAuctionByTimer, ActiveAuction(auction)) =>
+      // TODO Check if the seller is Locked and determine what to do when at least one bid is placed (reject bid ?)
       goto(ClosedState) applying AuctionClosed(evt)
   }
 
