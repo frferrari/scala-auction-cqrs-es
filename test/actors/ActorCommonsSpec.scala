@@ -3,9 +3,7 @@ package actors
 import java.time.{Instant, LocalDate}
 import java.util.UUID
 
-import akka.testkit.TestKit
-import models.{Auction, AuctionType, Bid, User}
-import play.api.Logger
+import models._
 
 /**
   * Created by Francois FERRARI on 18/05/2017
@@ -121,7 +119,7 @@ trait ActorCommonsSpec {
   def makeUser(email: String, nickName: String, lastName: String, firstName: String) =
     User(
       userId = UUID.randomUUID(),
-      email = email,
+      emailAddress = EmailAddress(email),
       password = "",
       isSuperAdmin = false,
       receivesNewsletter = false,

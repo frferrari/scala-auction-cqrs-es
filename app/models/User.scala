@@ -7,7 +7,7 @@ import java.util.UUID
   * Created by Francois FERRARI on 20/05/2017
   */
 case class User(userId: UUID,
-                email: String,
+                emailAddress: EmailAddress,
                 password: String,
 
                 isSuperAdmin: Boolean,

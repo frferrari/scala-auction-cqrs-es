@@ -1,6 +1,7 @@
 package actors.user
 
 import java.util.UUID
+import javax.inject.Inject
 
 import actors.user.UserActor.{UserActivatedReply, UserRegisteredReply}
 import actors.user.fsm._
@@ -9,6 +10,7 @@ import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.{ActivateUser, LockUser, RegisterUser}
 import cqrs.events._
 import models.{Auction, User}
+import persistence.EmailUnicityRepo
 import play.api.Logger
 
 import scala.reflect.{ClassTag, classTag}
@@ -16,8 +18,7 @@ import scala.reflect.{ClassTag, classTag}
 /**
   * Created by Francois FERRARI on 20/05/2017
   */
-
-class UserActor() extends Actor with PersistentFSM[UserState, UserStateData, UserEvent] {
+class UserActor extends Actor with PersistentFSM[UserState, UserStateData, UserEvent] {
   override def persistenceId: String = self.path.name
 
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]

@@ -16,6 +16,7 @@ import cqrs.events._
 import models.AuctionReason.AuctionReason
 import models.BidRejectionReason.BidRejectionReason
 import models._
+import persistence.EmailUnicitySql
 import play.api.Logger
 
 import scala.concurrent.duration._
@@ -33,7 +34,7 @@ object Test {
 
     val sellerA = User(
       userId = UUID.randomUUID(),
-      email = "",
+      emailAddress = EmailAddress("bob.eponge@cartoon.universe"),
       password = "",
       isSuperAdmin = false,
       receivesNewsletter = false,
