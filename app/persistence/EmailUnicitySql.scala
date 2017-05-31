@@ -9,8 +9,7 @@ import anorm._
 import models.{EmailAddress, EmailUnicity, User}
 import play.api.db.DBApi
 
-import scala.concurrent.ExecutionContext
-import scala.util.{Success, Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 /**
   * Created by Francois FERRARI on 29/05/2017
@@ -21,7 +20,7 @@ trait EmailUnicityRepo {
 }
 
 @Singleton
-class EmailUnicitySql @Inject()(dbapi: DBApi, ec: ExecutionContext) extends EmailUnicityRepo {
+class EmailUnicitySql @Inject()(dbapi: DBApi) extends EmailUnicityRepo {
   private val db = dbapi.database("default")
 
   val simpleParser = {

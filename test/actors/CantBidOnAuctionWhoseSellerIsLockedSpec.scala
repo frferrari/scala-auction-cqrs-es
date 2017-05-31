@@ -13,28 +13,25 @@ import cqrs.UsersBid
 import cqrs.commands._
 import models.{BidRejectionReason, UserReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
-import persistence.EmailUnicityRepo
-import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
-import play.api.inject.bind
 
 import scala.concurrent.duration._
 
 /**
   * Created by Francois FERRARI on 24/05/2017
   */
-class CantBidOnAuctionWhoseSellerIsLockedSpec extends TestKit(ActorSystem("AuctionActorSpec")) with ActorCommonsSpec
-  with ImplicitSender
-  with WordSpecLike
-  with Matchers
-  with BeforeAndAfterAll {
+class CantBidOnAuctionWhoseSellerIsLockedSpec
+  extends TestKit(ActorSystem("AuctionActorSpec"))
+    with ActorCommonsSpec
+    with ImplicitSender
+    with WordSpecLike
+    with Matchers
+    with BeforeAndAfterAll {
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
   }
 
-  implicit override val app = new GuiceApplicationBuilder()
-    .overrides(bind[EmailUnicityRepo].to[EmailUnicityMock])
-    .build
+  implicit val emailUnicityMock = new EmailUnicityMock
 
   "An AUCTION" should {
 

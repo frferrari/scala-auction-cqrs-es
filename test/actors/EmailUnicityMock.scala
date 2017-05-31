@@ -6,7 +6,6 @@ import persistence.EmailUnicityRepo
 /**
   * Created by Francois FERRARI on 31/05/2017
   */
-@Singleton
 class EmailUnicityMock extends EmailUnicityRepo {
   val emailRepo = scala.collection.mutable.ArrayBuffer[String]()
 
