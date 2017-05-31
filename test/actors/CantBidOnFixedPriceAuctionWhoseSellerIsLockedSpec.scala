@@ -7,6 +7,7 @@ import actors.auction.AuctionActor
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ClosedState, FinishedAuction}
 import actors.user.UserActor
+import actors.user.UserActor.UserRegisteredReply
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
@@ -37,6 +38,8 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec extends TestKit(ActorSys
 
       // Register and Lock the seller
       sellerActor ! RegisterUser(seller, Instant.now())
+      expectMsg(UserRegisteredReply)
+
       sellerActor ! LockUser(seller.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
       expectNoMsg(2.seconds)
 

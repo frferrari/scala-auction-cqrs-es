@@ -6,6 +6,11 @@ import java.util.UUID
 /**
   * Created by Francois FERRARI on 20/05/2017
   */
+object RegistrationRejectedReason extends Enumeration {
+  type RegistrationRejectedReason = Value
+  val EMAIL_ALREADY_EXISTS = Value
+}
+
 case class User(userId: UUID,
                 emailAddress: EmailAddress,
                 password: String,

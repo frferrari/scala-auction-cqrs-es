@@ -36,7 +36,7 @@ libraryDependencies ++= Seq(
   "org.scalatestplus.play" %% "scalatestplus-play" % "2.0.0" % Test,
   "com.typesafe.akka" %% "akka-persistence" % "2.5.1",
   "com.github.dnvriend" %% "akka-persistence-inmemory" % "1.3.7",
-  "com.typesafe.play" %% "anorm" % "2.4.0"
+  "com.typesafe.play" %% "anorm" % "2.5.3" withSources()
   // "com.okumin" %% "akka-persistence-sql-async" % "0.4.0",
   // "com.github.mauricio" %% "mysql-async" % "0.2.20"
 )

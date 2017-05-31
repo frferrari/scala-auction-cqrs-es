@@ -6,19 +6,22 @@ import javax.inject.{Inject, Singleton}
 
 import anorm.SqlParser._
 import anorm._
-import models.{EmailAddress, User, UserUnicity}
+import models.{EmailAddress, EmailUnicity, User}
 import play.api.db.DBApi
+
+import scala.concurrent.ExecutionContext
+import scala.util.{Success, Failure, Try}
 
 /**
   * Created by Francois FERRARI on 29/05/2017
   */
 
 trait EmailUnicityRepo {
-  def insert(user: User)
+  def insert(user: User): Either[String, Long]
 }
 
 @Singleton
-class EmailUnicitySql @Inject()(dbapi: DBApi) extends EmailUnicityRepo {
+class EmailUnicitySql @Inject()(dbapi: DBApi, ec: ExecutionContext) extends EmailUnicityRepo {
   private val db = dbapi.database("default")
 
   val simpleParser = {
@@ -26,16 +29,19 @@ class EmailUnicitySql @Inject()(dbapi: DBApi) extends EmailUnicityRepo {
     get[UUID]("userId") ~
     get[String]("email") ~
     get[Option[Instant]]("createdAt") map {
-      case id ~ userId ~ email ~ createdAt => UserUnicity(id, userId, EmailAddress(email), createdAt)
+      case id ~ userId ~ email ~ createdAt => EmailUnicity(id, userId, EmailAddress(email), createdAt)
     }
   }
 
-  def insert(user: User) = {
+  def insert(user: User): Either[String, Long] = Try(
     db.withConnection { implicit connection =>
       SQL("insert into emailUnicity (userId, email) values ({userId}, {email})").on(
         'userId -> user.userId,
         'email -> user.emailAddress.email
-      ).executeUpdate()
+      ).executeInsert(scalar[Long].singleOpt)
     }
+  ) match {
+    case Success(s) => Right(s.getOrElse(0))
+    case Failure(f) => Left(f.getMessage)
   }
 }

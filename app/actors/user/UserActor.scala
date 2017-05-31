@@ -3,13 +3,14 @@ package actors.user
 import java.util.UUID
 import javax.inject.Inject
 
-import actors.user.UserActor.{UserActivatedReply, UserRegisteredReply}
+import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, PoisonPill, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.{ActivateUser, LockUser, RegisterUser}
 import cqrs.events._
-import models.{Auction, User}
+import models.RegistrationRejectedReason.RegistrationRejectedReason
+import models.{EmailAddress, RegistrationRejectedReason, User}
 import persistence.EmailUnicityRepo
 import play.api.Logger
 
@@ -18,7 +19,7 @@ import scala.reflect.{ClassTag, classTag}
 /**
   * Created by Francois FERRARI on 20/05/2017
   */
-class UserActor extends Actor with PersistentFSM[UserState, UserStateData, UserEvent] {
+class UserActor(implicit emailUnicity: EmailUnicityRepo) extends Actor with PersistentFSM[UserState, UserStateData, UserEvent] {
   override def persistenceId: String = self.path.name
 
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]
@@ -27,7 +28,14 @@ class UserActor extends Actor with PersistentFSM[UserState, UserStateData, UserE
 
   when(IdleState) {
     case Event(cmd: RegisterUser, _) =>
-      goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) // replying UserRegisteredReply
+      emailUnicity.insert(cmd.user) match {
+        case Right(cnt) if cnt == 1 =>
+          goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) replying UserRegisteredReply
+
+        case _ =>
+          Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${cmd.user.emailAddress.email}, stopping the actor")
+          stop replying RegistrationRejectedReply(cmd.user.emailAddress, RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
+      }
   }
 
   when(RegisteredState) {
@@ -71,6 +79,8 @@ class UserActor extends Actor with PersistentFSM[UserState, UserStateData, UserE
 
 object UserActor {
 
+  case class RegistrationRejectedReply(emailAddress: EmailAddress, registrationRejectedReason: RegistrationRejectedReason)
+
   case object UserRegisteredReply
 
   case object UserActivatedReply
@@ -83,11 +93,11 @@ object UserActor {
 
   def getActorName(userId: UUID) = s"user-$userId"
 
-  def createUserActor(user: User)(implicit system: ActorSystem) = {
+  def createUserActor(user: User)(implicit system: ActorSystem, emailUnicity: EmailUnicityRepo) = {
     val name = getActorName(user.userId)
     Logger.info(s"Creating actor with name $name")
 
-    val actorRef: ActorRef = system.actorOf(Props(new UserActor()), name = name)
+    val actorRef: ActorRef = system.actorOf(Props(new UserActor), name = name)
     Logger.info(s"UserActor $name created with actorPath ${actorRef.path.toString}")
     actorRef
   }

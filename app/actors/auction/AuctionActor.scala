@@ -16,7 +16,6 @@ import cqrs.events._
 import models.AuctionReason.AuctionReason
 import models.BidRejectionReason.BidRejectionReason
 import models._
-import persistence.EmailUnicitySql
 import play.api.Logger
 
 import scala.concurrent.duration._
@@ -26,6 +25,7 @@ import scala.reflect._
   * Created by Francois FERRARI on 13/05/2017
   */
 
+/*
 object Test {
   def main(args: Array[String]): Unit = {
     Logger.info("Main is starting")
@@ -100,6 +100,9 @@ object Test {
       instantNow
     )
 
+    sellerAActor ! RegisterUser(sellerA, Instant.now())
+    Thread.sleep(3000)
+
     val auctionActorRef: ActorRef = AuctionActor.createAuctionActor(auction)
 
     auctionActorRef ! ScheduleAuction(auction)
@@ -107,9 +110,6 @@ object Test {
     // auctionActorRef ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
     auctionActorRef ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
 
-    Thread.sleep(3000)
-
-    sellerAActor ! RegisterUser(sellerA, Instant.now())
     Thread.sleep(3000)
     sellerAActor ! LockUser(sellerA.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
     Thread.sleep(3000)
@@ -120,6 +120,7 @@ object Test {
     system.terminate()
   }
 }
+*/
 
 class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] {
   val msToExtend = 5000

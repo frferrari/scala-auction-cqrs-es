@@ -6,12 +6,16 @@ import java.util.UUID
 import actors.auction.AuctionActor
 import actors.auction.AuctionActor.{AuctionStartedReply, BidPlacedReply, BidRejectedReply}
 import actors.user.UserActor
+import actors.user.UserActor.UserRegisteredReply
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
 import cqrs.commands._
 import models.{BidRejectionReason, UserReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import persistence.EmailUnicityRepo
+import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
+import play.api.inject.bind
 
 import scala.concurrent.duration._
 
@@ -28,6 +32,10 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec extends TestKit(ActorSystem("Aucti
     TestKit.shutdownActorSystem(system)
   }
 
+  implicit override val app = new GuiceApplicationBuilder()
+    .overrides(bind[EmailUnicityRepo].to[EmailUnicityMock])
+    .build
+
   "An AUCTION" should {
 
     "reject a bid on an auction whose seller is Locked" in {
@@ -36,6 +44,8 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec extends TestKit(ActorSystem("Aucti
 
       // Register and Lock the seller
       sellerActor ! RegisterUser(seller, Instant.now())
+      expectMsg(UserRegisteredReply)
+
       sellerActor ! LockUser(seller.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
       expectNoMsg(2.seconds)
 

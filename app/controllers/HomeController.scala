@@ -1,7 +1,16 @@
 package controllers
 
+import java.time.{Instant, LocalDate}
+import java.util.UUID
 import javax.inject._
-import play.api._
+
+import actors.auction.AuctionActor
+import actors.user.UserActor
+import akka.actor.{ActorRef, ActorSystem}
+import cqrs.UsersBid
+import cqrs.commands._
+import models._
+import persistence.EmailUnicityRepo
 import play.api.mvc._
 
 /**
@@ -9,7 +18,7 @@ import play.api.mvc._
  * application's home page.
  */
 @Singleton
-class HomeController @Inject() extends Controller {
+class HomeController @Inject() (implicit emailUnicityRepo: EmailUnicityRepo) extends Controller {
 
   /**
    * Create an Action to render an HTML page.
@@ -20,5 +29,99 @@ class HomeController @Inject() extends Controller {
    */
   def index = Action { implicit request =>
     Ok(views.html.index())
+  }
+
+  def test = Action { implicit request =>
+
+    implicit val actorSystem = ActorSystem("andycotSystem")
+
+    val sellerA = User(
+      userId = UUID.randomUUID(),
+      emailAddress = EmailAddress("bob.eponge@cartoon.universe"),
+      password = "",
+      isSuperAdmin = false,
+      receivesNewsletter = false,
+      receivesRenewals = false,
+      currency = "EUR",
+      nickName = "sellerA",
+      lastName = "Eponge",
+      firstName = "Bob",
+      lang = "fr",
+      avatar = "",
+      dateOfBirth = LocalDate.of(2000, 1, 1),
+      phone = "",
+      mobile = "",
+      fax = "",
+      description = "",
+      sendingCountry = "",
+      invoiceName = "",
+      invoiceAddress1 = "",
+      invoiceAddress2 = "",
+      invoiceZipCode = "",
+      invoiceCity = "",
+      invoiceCountry = "",
+      vatIntra = "",
+      holidayStartAt = None,
+      holidayEndAt = None,
+      holidayHideId = UUID.randomUUID(),
+      bidIncrement = 0.10,
+      listedTimeId = UUID.randomUUID(),
+      slug = "",
+      watchedAuctions = Nil,
+      activatedAt = Some(Instant.now()),
+      lockedAt = None,
+      lastLoginAt = None,
+      unregisteredAt = None,
+      createdAt = Instant.now(),
+      updatedAt = None
+    )
+
+    val (sellerAName, sellerAActor) = ("sellerA", UserActor.createUserActor(sellerA))
+
+    val (bidderAName, bidderAUUID) = ("francois", UUID.randomUUID())
+
+    val instantNow = Instant.now()
+
+    val auction = Auction(
+      UUID.randomUUID(),
+      None, None, None,
+      sellerA.userId,
+      UUID.randomUUID(), UUID.randomUUID(), AuctionType.AUCTION,
+      "Eiffel tower", "", 2010,
+      UUID.randomUUID(), Nil, Nil, None,
+      Nil,
+      0.10, 0.10, 0.10, None,
+      1, 1,
+      instantNow.plusSeconds(5), None, instantNow.plusSeconds(60 * 60 * 24),
+      // instantNow, None, instantNow.plusSeconds(60 * 60 * 24),
+      hasAutomaticRenewal = true, hasTimeExtension = true,
+      0, 0, 0,
+      "EUR",
+      None, Nil,
+      None, None,
+      false,
+      instantNow
+    )
+
+    sellerAActor ! RegisterUser(sellerA, Instant.now())
+    Thread.sleep(3000)
+
+    val auctionActorRef: ActorRef = AuctionActor.createAuctionActor(auction)
+
+    auctionActorRef ! ScheduleAuction(auction)
+    // auctionActorRef ! StartAuction(auction)
+    // auctionActorRef ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
+    auctionActorRef ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+
+    Thread.sleep(3000)
+    sellerAActor ! LockUser(sellerA.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
+    Thread.sleep(3000)
+    sellerAActor ! UnlockUser(sellerA.userId, Instant.now())
+
+    Thread.sleep(60000)
+
+    actorSystem.terminate()
+
+    Ok
   }
 }
