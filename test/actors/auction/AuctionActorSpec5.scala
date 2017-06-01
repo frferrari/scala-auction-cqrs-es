@@ -1,8 +1,8 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 
-import actors.auction.AuctionActor
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
 import akka.actor.ActorSystem
@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 21/05/2017
   */
-class AuctionActorSpec7() extends TestKit(ActorSystem("AuctionActorSpec"))
+class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
   with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
@@ -27,7 +27,7 @@ class AuctionActorSpec7() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  "An AUCTION W/reserve price W/1 bidder greater than the reserve price, he wins at the reserve price value" should {
+  "An AUCTION W/reserve price W/1 bidder lower than the reserve price" should {
 
     val auction = makeAuction(
       startPrice = 0.10,
@@ -49,32 +49,36 @@ class AuctionActorSpec7() extends TestKit(ActorSystem("AuctionActorSpec"))
     }
 
     "accept a bid from bidderA" in {
-      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 9.00, Instant.now()))
+      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 4.00, Instant.now()))
       expectMsg(BidPlacedReply)
 
       auctionActor ! GetCurrentState
       val expectedBidEssentials = List(
-        (bidderAUUID, 1, 8.0, 9.0, true, false, false)
+        (bidderAUUID, 1, auction.startPrice, 4.0, true, false, false)
       )
       expectMsgPF() {
         case CurrentStateReply(StartedState, ActiveAuction(activeAuction))
-          if activeAuction.currentPrice == 8.0 &&
+          if activeAuction.currentPrice == activeAuction.startPrice &&
+            activeAuction.bids.length == 1 &&
+            activeAuction.bids.head.bidPrice == activeAuction.startPrice &&
+            activeAuction.bids.head.bidMaxPrice == 4.0 &&
+            activeAuction.bids.head.bidderId == bidderAUUID &&
             bidEssentials(activeAuction.bids) == expectedBidEssentials
         => ()
       }
     }
 
-    "be in CLOSED state when it has reached it's end time with winner" in {
+    "be in CLOSED state when it has reached it's end time without winner" in {
       expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
 
       auctionActor ! GetCurrentState
       expectMsgPF() {
         case CurrentStateReply(ClosedState, FinishedAuction(finishedAuction))
           if finishedAuction.bids.length == 1 &&
-            finishedAuction.currentPrice == 8.0 &&
+            finishedAuction.currentPrice == finishedAuction.startPrice &&
             finishedAuction.closedBy.isDefined &&
             finishedAuction.closedAt.isDefined &&
-            finishedAuction.isSold
+            !finishedAuction.isSold
         => ()
       }
     }

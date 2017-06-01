@@ -1,10 +1,10 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 
-import actors.auction.AuctionActor
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
-import actors.auction.fsm.{ActiveAuction, StartedState}
+import actors.auction.fsm.{ClosedState, FinishedAuction}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands.{GetCurrentState, ScheduleAuction}
@@ -15,7 +15,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 21/05/2017
   */
-class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
+class AuctionActorSpec1() extends TestKit(ActorSystem("AuctionActorSpec"))
   with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
@@ -26,14 +26,14 @@ class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  "An AUCTION W/O reserve price W/automatic renewal W/O bidders" should {
+  "An AUCTION W/O reserve price W/O automatic renewal W/O bidders" should {
 
     val auction = makeAuction(
       startPrice = 0.10,
       bidIncrement = 0.10,
       startsAt = Instant.now(),
-      lastsSeconds = 10,
-      hasAutomaticRenewal = true,
+      lastsSeconds = 20,
+      hasAutomaticRenewal = false,
       hasTimeExtension = false,
       sellerAUUID
     )
@@ -44,19 +44,17 @@ class AuctionActorSpec2() extends TestKit(ActorSystem("AuctionActorSpec"))
       expectMsg(AuctionScheduledReply)
     }
 
-    "be RESTARTED when it has reached it's end time" in {
+    "be in CLOSED state when it has reached it's end time" in {
       expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
 
       auctionActor ! GetCurrentState
       expectMsgPF() {
-        case CurrentStateReply(StartedState, ActiveAuction(restartedAuction))
-          if restartedAuction.bids.isEmpty &&
-            restartedAuction.currentPrice == restartedAuction.startPrice &&
-            restartedAuction.closedBy.isEmpty &&
-            restartedAuction.closedAt.isEmpty &&
-            restartedAuction.startsAt == auction.endsAt &&
-            restartedAuction.endsAt.isAfter(restartedAuction.startsAt) &&
-            ! restartedAuction.isSold
+        case CurrentStateReply(ClosedState, FinishedAuction(finishedAuction))
+          if finishedAuction.bids.isEmpty &&
+            finishedAuction.currentPrice == finishedAuction.startPrice &&
+            finishedAuction.closedBy.isDefined &&
+            finishedAuction.closedAt.isDefined &&
+            ! finishedAuction.isSold
         => ()
       }
     }

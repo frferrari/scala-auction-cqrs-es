@@ -1,10 +1,10 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 
-import actors.auction.AuctionActor
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
-import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
+import actors.auction.fsm.{ActiveAuction, StartedState}
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands.{GetCurrentState, ScheduleAuction}

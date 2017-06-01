@@ -1,8 +1,8 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 
-import actors.auction.AuctionActor
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
 import akka.actor.ActorSystem

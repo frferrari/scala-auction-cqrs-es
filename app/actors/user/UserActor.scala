@@ -1,11 +1,10 @@
 package actors.user
 
 import java.util.UUID
-import javax.inject.Inject
 
 import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
-import akka.actor.{Actor, ActorRef, ActorSystem, PoisonPill, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.{ActivateUser, LockUser, RegisterUser}
 import cqrs.events._
@@ -34,7 +33,7 @@ class UserActor(implicit emailUnicity: EmailUnicityRepo) extends Actor with Pers
 
         case _ =>
           Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${cmd.user.emailAddress.email}, stopping the actor")
-          stop replying RegistrationRejectedReply(cmd.user.emailAddress, RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
+          stop replying RegistrationRejectedReply(cmd.user.emailAddress, RegistrationRejectedReason.EMAIL_OR_NICKNAME_ALREADY_EXISTS)
       }
   }
 

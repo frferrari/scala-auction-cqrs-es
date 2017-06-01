@@ -1,8 +1,8 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 
-import actors.auction.AuctionActor
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
 import akka.actor.ActorSystem
@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 21/05/2017
   */
-class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
+class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
   with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike
@@ -27,7 +27,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
-  "An AUCTION W/reserve price W/1 bidder lower than the reserve price" should {
+  "An AUCTION W/O reserve price W/1 bidder" should {
 
     val auction = makeAuction(
       startPrice = 0.10,
@@ -36,8 +36,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
       lastsSeconds = 20,
       hasAutomaticRenewal = false,
       hasTimeExtension = false,
-      sellerAUUID,
-      Some(8)
+      sellerAUUID
     )
     val auctionActor = AuctionActor.createAuctionActor(auction)
 
@@ -68,7 +67,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
       }
     }
 
-    "be in CLOSED state when it has reached it's end time without winner" in {
+    "be in CLOSED state when it has reached it's end time with bidderA as a winner" in {
       expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
 
       auctionActor ! GetCurrentState
@@ -78,7 +77,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionActorSpec"))
             finishedAuction.currentPrice == finishedAuction.startPrice &&
             finishedAuction.closedBy.isDefined &&
             finishedAuction.closedAt.isDefined &&
-            !finishedAuction.isSold
+            finishedAuction.isSold
         => ()
       }
     }

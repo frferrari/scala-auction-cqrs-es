@@ -1,12 +1,12 @@
-package actors
+package actors.auction
 
 import java.time.Instant
 import java.util.UUID
 
-import actors.auction.AuctionActor
 import actors.auction.AuctionActor.{AuctionStartedReply, BidPlacedReply, BidRejectedReply}
-import actors.user.UserActor
+import actors.user.{EmailUnicityMock, UserActor}
 import actors.user.UserActor.UserRegisteredReply
+import actors.ActorCommonsSpec
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
