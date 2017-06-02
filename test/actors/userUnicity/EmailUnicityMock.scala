@@ -7,7 +7,7 @@ import play.api.Logger
 /**
   * Created by Francois FERRARI on 31/05/2017
   */
-class EmailUnicityMock extends EmailUnicityRepo {
+@deprecated("UserUnicity is now managed through the UserUnicityActor", "V1_0") class EmailUnicityMock extends EmailUnicityRepo {
   var emailRepo = scala.collection.mutable.ListBuffer[String]()
   var nickNameRepo = scala.collection.mutable.ListBuffer[String]()
 

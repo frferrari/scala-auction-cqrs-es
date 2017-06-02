@@ -15,6 +15,10 @@ case object RegisteredState extends UserState {
   override def identifier: String = "Registered"
 }
 
+case object AwaitingUserUnicityResponseState extends UserState {
+  override def identifier: String = "AwaitingUserUnicityResponse"
+}
+
 case object ActiveState extends UserState {
   override def identifier: String = "Active"
 }

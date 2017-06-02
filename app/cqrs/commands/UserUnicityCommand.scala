@@ -9,4 +9,4 @@ import models.User
   */
 sealed trait UserUnicityCommand
 
-case class RecordUserUnicity(user: User, createdAt: Instant) extends UserUnicityCommand
+case class RecordUserUnicity(user: User, createdAt: Instant = Instant.now) extends UserUnicityCommand

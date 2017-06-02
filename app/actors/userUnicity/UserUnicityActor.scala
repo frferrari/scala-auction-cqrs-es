@@ -1,11 +1,14 @@
 package actors.userUnicity
 
+import java.time.Instant
+
 import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
 import actors.userUnicity.fsm._
 import akka.actor.{Actor, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.RecordUserUnicity
 import cqrs.events._
+import models.User
 
 import scala.reflect.{ClassTag, classTag}
 
@@ -21,20 +24,20 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
   when(AwaitingFirstUserRegistration) {
     case Event(cmd: RecordUserUnicity, _) =>
-      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply
+      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.createdAt)
   }
 
   when(AwaitingNextUserRegistration) {
     case Event(cmd: RecordUserUnicity, NonEmptyUserUnicityList(userUnicityList)) =>
       (userUnicityList.find(_.emailAddress == cmd.user.emailAddress), userUnicityList.find(_.nickName == cmd.user.nickName)) match {
         case (Some(_), _) =>
-          stay replying UserUnicityEmailAlreadyRegisteredReply
+          stay replying UserUnicityEmailAlreadyRegisteredReply(cmd.user)
 
         case (_, Some(_)) =>
-          stay replying UserUnicityNickNameAlreadyRegisteredReply
+          stay replying UserUnicityNickNameAlreadyRegisteredReply(cmd.user)
 
         case _ =>
-          stay applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply
+          stay applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.createdAt)
       }
   }
 
@@ -58,11 +61,13 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
 object UserUnicityActor {
 
-  case object UserUnicityEmailAlreadyRegisteredReply
+  case class UserUnicityEmailAlreadyRegisteredReply(user: User)
 
-  case object UserUnicityNickNameAlreadyRegisteredReply
+  case class UserUnicityNickNameAlreadyRegisteredReply(user: User)
 
-  case object UserUnicityRecordedReply
+  case class UserUnicityRecordedReply(user: User, createdAt: Instant)
 
   def props = Props[UserUnicityActor]
+
+  final val name = "UserUnicityActor"
 }

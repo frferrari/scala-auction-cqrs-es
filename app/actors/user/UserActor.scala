@@ -1,24 +1,31 @@
 package actors.user
 
 import java.util.UUID
+import javax.inject.Inject
 
 import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
-import cqrs.commands.{ActivateUser, LockUser, RegisterUser}
+import cqrs.commands.{ActivateUser, LockUser, RecordUserUnicity, RegisterUser}
 import cqrs.events._
 import models.RegistrationRejectedReason.RegistrationRejectedReason
-import models.{EmailAddress, RegistrationRejectedReason, User}
-import persistence.EmailUnicityRepo
+import models.{RegistrationRejectedReason, User}
 import play.api.Logger
+import play.api.libs.concurrent.InjectedActorSupport
 
+import scala.concurrent.duration._
 import scala.reflect.{ClassTag, classTag}
 
 /**
   * Created by Francois FERRARI on 20/05/2017
   */
-class UserActor(implicit emailUnicity: EmailUnicityRepo) extends Actor with PersistentFSM[UserState, UserStateData, UserEvent] {
+class UserActor(userUnicityActorRef: ActorRef)
+  extends Actor
+    with PersistentFSM[UserState, UserStateData, UserEvent]
+    with InjectedActorSupport {
+
   override def persistenceId: String = self.path.name
 
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]
@@ -27,14 +34,24 @@ class UserActor(implicit emailUnicity: EmailUnicityRepo) extends Actor with Pers
 
   when(IdleState) {
     case Event(cmd: RegisterUser, _) =>
-      emailUnicity.insert(cmd.user) match {
-        case Right(cnt) if cnt == 1 =>
-          goto(RegisteredState) applying UserRegistered(cmd.user, cmd.createdAt) replying UserRegisteredReply
+      userUnicityActorRef ! RecordUserUnicity(cmd.user)
+      goto(AwaitingUserUnicityResponseState) forMax 4.seconds
+  }
 
-        case _ =>
-          Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${cmd.user.emailAddress.email}, stopping the actor")
-          stop replying RegistrationRejectedReply(cmd.user.emailAddress, RegistrationRejectedReason.EMAIL_OR_NICKNAME_ALREADY_EXISTS)
-      }
+  when(AwaitingUserUnicityResponseState) {
+    case Event(UserUnicityRecordedReply(user, createdAt), _) =>
+      goto(RegisteredState) applying UserRegistered(user, createdAt) replying UserRegisteredReply
+
+    case Event(UserUnicityEmailAlreadyRegisteredReply(user), _) =>
+      Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${user.emailAddress.email}, stopping the user actor")
+      stop replying RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
+
+    case Event(UserUnicityNickNameAlreadyRegisteredReply(user), _) =>
+      Logger.warn(s"UserActor RegisterUser command rejected due to duplicate nickname ${user.nickName}, stopping the user actor")
+      stop replying RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS)
+
+    case Event(StateTimeout, _) =>
+      stop replying RegistrationRejectedReply(RegistrationRejectedReason.USER_UNICITY_SERVICE_TIMEOUT)
   }
 
   when(RegisteredState) {
@@ -78,7 +95,7 @@ class UserActor(implicit emailUnicity: EmailUnicityRepo) extends Actor with Pers
 
 object UserActor {
 
-  case class RegistrationRejectedReply(emailAddress: EmailAddress, registrationRejectedReason: RegistrationRejectedReason)
+  case class RegistrationRejectedReply(registrationRejectedReason: RegistrationRejectedReason)
 
   case object UserRegisteredReply
 
@@ -92,11 +109,11 @@ object UserActor {
 
   def getActorName(userId: UUID) = s"user-$userId"
 
-  def createUserActor(user: User)(implicit system: ActorSystem, emailUnicity: EmailUnicityRepo) = {
+  def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem) = {
     val name = getActorName(user.userId)
     Logger.info(s"Creating actor with name $name")
 
-    val actorRef: ActorRef = system.actorOf(Props(new UserActor), name = name)
+    val actorRef: ActorRef = system.actorOf(Props(new UserActor(userUnicityActorRef)), name = name)
     Logger.info(s"UserActor $name created with actorPath ${actorRef.path.toString}")
     actorRef
   }

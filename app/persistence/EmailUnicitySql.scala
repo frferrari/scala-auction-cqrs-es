@@ -15,12 +15,12 @@ import scala.util.{Failure, Success, Try}
   * Created by Francois FERRARI on 29/05/2017
   */
 
-trait EmailUnicityRepo {
+@deprecated trait EmailUnicityRepo {
   def insert(user: User): Either[String, Long]
 }
 
 @Singleton
-class EmailUnicitySql @Inject()(dbapi: DBApi) extends EmailUnicityRepo {
+@deprecated class EmailUnicitySql @Inject()(dbapi: DBApi) extends EmailUnicityRepo {
   private val db = dbapi.database("default")
 
   val simpleParser = {

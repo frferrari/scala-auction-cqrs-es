@@ -8,7 +8,8 @@ import java.util.UUID
   */
 object RegistrationRejectedReason extends Enumeration {
   type RegistrationRejectedReason = Value
-  val EMAIL_OR_NICKNAME_ALREADY_EXISTS = Value
+  val EMAIL_ALREADY_EXISTS, NICKNAME_ALREADY_EXISTS,
+  USER_UNICITY_SERVICE_TIMEOUT = Value
 }
 
 case class User(userId: UUID,

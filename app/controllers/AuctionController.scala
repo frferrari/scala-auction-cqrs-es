@@ -2,22 +2,22 @@ package controllers
 
 import java.time.{Instant, LocalDate}
 import java.util.UUID
-import javax.inject.{Inject, Singleton}
+import javax.inject.{Inject, Named, Singleton}
 
 import actors.auction.AuctionActor
 import actors.user.UserActor
+import actors.userUnicity.UserUnicityActor
 import akka.actor.{ActorRef, ActorSystem}
 import cqrs.UsersBid
 import cqrs.commands._
 import models._
-import persistence.EmailUnicityRepo
 import play.api.mvc.{Action, Controller}
 
 /**
   * Created by Francois FERRARI on 31/05/2017
   */
 @Singleton
-class AuctionController @Inject()(implicit emailUnicityRepo: EmailUnicityRepo) extends Controller {
+class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef) extends Controller {
 
   def test = Action { implicit request =>
 
@@ -64,7 +64,7 @@ class AuctionController @Inject()(implicit emailUnicityRepo: EmailUnicityRepo) e
       updatedAt = None
     )
 
-    val (sellerAName, sellerAActor) = ("sellerA", UserActor.createUserActor(sellerA))
+    val (sellerAName, sellerAActor) = ("sellerA", UserActor.createUserActor(sellerA, userUnicityActorRef))
 
     val (bidderAName, bidderAUUID) = ("francois", UUID.randomUUID())
 
