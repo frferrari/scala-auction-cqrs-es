@@ -11,8 +11,7 @@ import cqrs.commands._
 import models.RegistrationRejectedReason
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import play.api.inject.BindingKey
-import play.api.inject.guice.GuiceInjectorBuilder
-import play.api.libs.concurrent.AkkaGuiceSupport
+import play.api.inject.guice.GuiceApplicationBuilder
 
 /**
   * Created by Francois FERRARI on 24/05/2017
@@ -29,10 +28,9 @@ class UserUnicityViaUserSpec
     TestKit.shutdownActorSystem(system)
   }
 
-  val injector = new GuiceInjectorBuilder()
-    .injector
-
-  val userUnicityActorRef: ActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
 
   "A USER actor" should {
 

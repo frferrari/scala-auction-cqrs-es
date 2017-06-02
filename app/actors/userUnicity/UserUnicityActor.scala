@@ -9,6 +9,7 @@ import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.RecordUserUnicity
 import cqrs.events._
 import models.User
+import play.api.Logger
 
 import scala.reflect.{ClassTag, classTag}
 
@@ -20,10 +21,13 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
   override def domainEventClassTag: ClassTag[UserUnicityEvent] = classTag[UserUnicityEvent]
 
+  Logger.info("================ Starting UserUnicityActor")
+
   startWith(AwaitingFirstUserRegistration, EmptyUserUnictyList)
 
   when(AwaitingFirstUserRegistration) {
     case Event(cmd: RecordUserUnicity, _) =>
+      Logger.info("============== RecordUserUnicity cmd received")
       goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.createdAt)
   }
 

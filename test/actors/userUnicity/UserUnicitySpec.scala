@@ -4,10 +4,12 @@ import java.time.Instant
 
 import actors.ActorCommonsSpec
 import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands._
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import play.api.inject.BindingKey
+import play.api.inject.guice.GuiceApplicationBuilder
 
 /**
   * Created by Francois FERRARI on 24/05/2017
@@ -24,6 +26,10 @@ class UserUnicitySpec
     TestKit.shutdownActorSystem(system)
   }
 
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef: ActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+
 //  val injector = new GuiceInjectorBuilder()
 //    .overrides(bind(classOf[EmailUnicityRepo]).to[EmailUnicityMock])
 //    .injector
@@ -32,7 +38,7 @@ class UserUnicitySpec
 
   "A UserUnicity actor" should {
 
-    val userUnicityActor = system.actorOf(UserUnicityActor.props, "userUnicityActor")
+//    val userUnicityActor = system.actorOf(UserUnicityActor.props, "userUnicityActor")
 
     val seller1 = makeUser("user1@pluto.space", "user1", "Robert1", "John1")
     val seller2 = makeUser("user1@pluto.space", "user2", "Robert2", "John2")
@@ -40,23 +46,31 @@ class UserUnicitySpec
     val seller4 = makeUser("user4@pluto.space", "user4", "Robert4", "John4")
 
     "accept to record a user with an unused email and unused nickname (first attempt to record a user)" in {
-      userUnicityActor ! RecordUserUnicity(seller1, Instant.now())
-      expectMsg(UserUnicityRecordedReply)
+      userUnicityActorRef ! RecordUserUnicity(seller1, Instant.now())
+      expectMsgPF() {
+        case (reply: UserUnicityRecordedReply) => ()
+      }
     }
 
     "refuse to record a user with an already used email" in {
-      userUnicityActor ! RecordUserUnicity(seller2, Instant.now())
-      expectMsg(UserUnicityEmailAlreadyRegisteredReply)
+      userUnicityActorRef ! RecordUserUnicity(seller2, Instant.now())
+      expectMsgPF() {
+        case (reply: UserUnicityEmailAlreadyRegisteredReply) => ()
+      }
     }
 
     "refuse to register a user with an already used nickname" in {
-      userUnicityActor ! RecordUserUnicity(seller3, Instant.now())
-      expectMsg(UserUnicityNickNameAlreadyRegisteredReply)
+      userUnicityActorRef ! RecordUserUnicity(seller3, Instant.now())
+      expectMsgPF() {
+        case (reply: UserUnicityNickNameAlreadyRegisteredReply) => ()
+      }
     }
 
     "accept to record a user with an unused email and unused nickname" in {
-      userUnicityActor ! RecordUserUnicity(seller4, Instant.now())
-      expectMsg(UserUnicityRecordedReply)
+      userUnicityActorRef ! RecordUserUnicity(seller4, Instant.now())
+      expectMsgPF() {
+        case (reply: UserUnicityRecordedReply) => ()
+      }
     }
   }
 }

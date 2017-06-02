@@ -34,8 +34,9 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   when(IdleState) {
     case Event(cmd: RegisterUser, _) =>
+      Logger.info(s"================ Sending RecordUserUnicity for user ${cmd.user}")
       userUnicityActorRef ! RecordUserUnicity(cmd.user)
-      goto(AwaitingUserUnicityResponseState) forMax 4.seconds
+      goto(AwaitingUserUnicityResponseState) // forMax 2.seconds
   }
 
   when(AwaitingUserUnicityResponseState) {
@@ -51,7 +52,12 @@ class UserActor(userUnicityActorRef: ActorRef)
       stop replying RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS)
 
     case Event(StateTimeout, _) =>
+      Logger.error("==================-----------------=== StateTimeout")
       stop replying RegistrationRejectedReply(RegistrationRejectedReason.USER_UNICITY_SERVICE_TIMEOUT)
+
+    case Event(x, _) =>
+      Logger.error(s"====================== event $x")
+      stay
   }
 
   when(RegisteredState) {
