@@ -4,9 +4,10 @@ import java.time.Instant
 import java.util.UUID
 
 import actors.auction.AuctionActor.{AuctionStartedReply, BidPlacedReply, BidRejectedReply}
-import actors.user.{EmailUnicityMock, UserActor}
+import actors.user.UserActor
 import actors.user.UserActor.UserRegisteredReply
 import actors.ActorCommonsSpec
+import actors.userUnicity.EmailUnicityMock
 import akka.actor.ActorSystem
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid

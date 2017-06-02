@@ -1,4 +1,4 @@
-package actors.user
+package actors.userUnicity
 
 import models.User
 import persistence.EmailUnicityRepo

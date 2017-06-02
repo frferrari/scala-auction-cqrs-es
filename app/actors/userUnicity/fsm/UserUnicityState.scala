@@ -1,4 +1,4 @@
-package actors.user.fsm
+package actors.userUnicity.fsm
 
 import akka.persistence.fsm.PersistentFSM.FSMState
 

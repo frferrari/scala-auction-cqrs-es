@@ -1,8 +1,8 @@
-package actors.user
+package actors.userUnicity
 
-import actors.user.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply}
-import actors.user.fsm._
-import akka.actor.Actor
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
+import actors.userUnicity.fsm._
+import akka.actor.{Actor, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.RecordUserUnicity
 import cqrs.events._
@@ -21,7 +21,7 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
   when(AwaitingFirstUserRegistration) {
     case Event(cmd: RecordUserUnicity, _) =>
-      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt)
+      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply
   }
 
   when(AwaitingNextUserRegistration) {
@@ -34,7 +34,7 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
           stay replying UserUnicityNickNameAlreadyRegisteredReply
 
         case _ =>
-          stay applying UserUnicityRecorded(cmd.user, cmd.createdAt)
+          stay applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply
       }
   }
 
@@ -46,10 +46,10 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
     */
   override def applyEvent(event: UserUnicityEvent, stateDataBefore: UserUnicityStateData): UserUnicityStateData = (event, stateDataBefore) match {
     case (event: UserUnicityRecorded, EmptyUserUnictyList) =>
-      stateDataBefore.registerUser(event.user)
+      stateDataBefore.recordUser(event.user)
 
     case (event: UserUnicityRecorded, NonEmptyUserUnicityList(_)) =>
-      stateDataBefore.registerUser(event.user)
+      stateDataBefore.recordUser(event.user)
 
     case _ =>
       stateDataBefore
@@ -57,6 +57,12 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 }
 
 object UserUnicityActor {
+
   case object UserUnicityEmailAlreadyRegisteredReply
+
   case object UserUnicityNickNameAlreadyRegisteredReply
+
+  case object UserUnicityRecordedReply
+
+  def props = Props[UserUnicityActor]
 }
