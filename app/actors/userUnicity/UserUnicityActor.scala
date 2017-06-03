@@ -2,14 +2,14 @@ package actors.userUnicity
 
 import java.time.Instant
 
+import actors.user.fsm.{InactiveUser, UserStateData}
 import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
 import actors.userUnicity.fsm._
-import akka.actor.{Actor, Props}
+import akka.actor.{Actor, ActorRef, Props}
 import akka.persistence.fsm.PersistentFSM
 import cqrs.commands.RecordUserUnicity
 import cqrs.events._
-import models.User
-import play.api.Logger
+import models.{User, UserUnicity}
 
 import scala.reflect.{ClassTag, classTag}
 
@@ -21,55 +21,46 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
   override def domainEventClassTag: ClassTag[UserUnicityEvent] = classTag[UserUnicityEvent]
 
-  Logger.info("================ Starting UserUnicityActor")
-
   startWith(AwaitingFirstUserRegistration, EmptyUserUnictyList)
 
   when(AwaitingFirstUserRegistration) {
     case Event(cmd: RecordUserUnicity, _) =>
-      Logger.info("============== RecordUserUnicity cmd received")
-      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.createdAt)
+      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.theSender, cmd.createdAt)
   }
 
   when(AwaitingNextUserRegistration) {
-    case Event(cmd: RecordUserUnicity, NonEmptyUserUnicityList(userUnicityList)) =>
-      (userUnicityList.find(_.emailAddress == cmd.user.emailAddress), userUnicityList.find(_.nickName == cmd.user.nickName)) match {
+    case Event(RecordUserUnicity(user, theSender, createdAt), NonEmptyUserUnicityList(userUnicityList)) =>
+      findUserUnicityRecord(userUnicityList, user) match {
         case (Some(_), _) =>
-          stay replying UserUnicityEmailAlreadyRegisteredReply(cmd.user)
+          stay replying UserUnicityEmailAlreadyRegisteredReply(user, theSender)
 
         case (_, Some(_)) =>
-          stay replying UserUnicityNickNameAlreadyRegisteredReply(cmd.user)
+          stay replying UserUnicityNickNameAlreadyRegisteredReply(user, theSender)
 
         case _ =>
-          stay applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.createdAt)
+          stay applying UserUnicityRecorded(user, createdAt) replying UserUnicityRecordedReply(user, theSender, createdAt)
       }
   }
 
-  /**
-    *
-    * @param event           The event to apply
-    * @param stateDataBefore The state data before any modification
-    * @return
-    */
   override def applyEvent(event: UserUnicityEvent, stateDataBefore: UserUnicityStateData): UserUnicityStateData = (event, stateDataBefore) match {
-    case (event: UserUnicityRecorded, EmptyUserUnictyList) =>
-      stateDataBefore.recordUser(event.user)
-
-    case (event: UserUnicityRecorded, NonEmptyUserUnicityList(_)) =>
-      stateDataBefore.recordUser(event.user)
+    case (UserUnicityRecorded(user, _), _) =>
+      stateDataBefore.recordUser(user)
 
     case _ =>
       stateDataBefore
   }
+
+  def findUserUnicityRecord(userUnicityList: Seq[UserUnicity], user: User) =
+    (userUnicityList.find(_.emailAddress == user.emailAddress), userUnicityList.find(_.nickName == user.nickName))
 }
 
 object UserUnicityActor {
 
-  case class UserUnicityEmailAlreadyRegisteredReply(user: User)
+  case class UserUnicityEmailAlreadyRegisteredReply(user: User, theSender: ActorRef)
 
-  case class UserUnicityNickNameAlreadyRegisteredReply(user: User)
+  case class UserUnicityNickNameAlreadyRegisteredReply(user: User, theSender: ActorRef)
 
-  case class UserUnicityRecordedReply(user: User, createdAt: Instant)
+  case class UserUnicityRecordedReply(user: User, theSender: ActorRef, createdAt: Instant)
 
   def props = Props[UserUnicityActor]
 

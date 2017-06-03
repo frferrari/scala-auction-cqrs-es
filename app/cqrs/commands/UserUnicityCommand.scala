@@ -2,6 +2,7 @@ package cqrs.commands
 
 import java.time.Instant
 
+import akka.actor.ActorRef
 import models.User
 
 /**
@@ -9,4 +10,4 @@ import models.User
   */
 sealed trait UserUnicityCommand
 
-case class RecordUserUnicity(user: User, createdAt: Instant = Instant.now) extends UserUnicityCommand
+case class RecordUserUnicity(user: User, theSender: ActorRef, createdAt: Instant = Instant.now) extends UserUnicityCommand

@@ -46,28 +46,28 @@ class UserUnicitySpec
     val seller4 = makeUser("user4@pluto.space", "user4", "Robert4", "John4")
 
     "accept to record a user with an unused email and unused nickname (first attempt to record a user)" in {
-      userUnicityActorRef ! RecordUserUnicity(seller1, Instant.now())
+      userUnicityActorRef ! RecordUserUnicity(seller1, self, Instant.now())
       expectMsgPF() {
         case (reply: UserUnicityRecordedReply) => ()
       }
     }
 
     "refuse to record a user with an already used email" in {
-      userUnicityActorRef ! RecordUserUnicity(seller2, Instant.now())
+      userUnicityActorRef ! RecordUserUnicity(seller2, self, Instant.now())
       expectMsgPF() {
         case (reply: UserUnicityEmailAlreadyRegisteredReply) => ()
       }
     }
 
     "refuse to register a user with an already used nickname" in {
-      userUnicityActorRef ! RecordUserUnicity(seller3, Instant.now())
+      userUnicityActorRef ! RecordUserUnicity(seller3, self, Instant.now())
       expectMsgPF() {
         case (reply: UserUnicityNickNameAlreadyRegisteredReply) => ()
       }
     }
 
     "accept to record a user with an unused email and unused nickname" in {
-      userUnicityActorRef ! RecordUserUnicity(seller4, Instant.now())
+      userUnicityActorRef ! RecordUserUnicity(seller4, self, Instant.now())
       expectMsgPF() {
         case (reply: UserUnicityRecordedReply) => ()
       }

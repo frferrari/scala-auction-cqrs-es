@@ -15,7 +15,7 @@ import cqrs.commands._
 import models.{BidRejectionReason, UserReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import play.api.inject.BindingKey
-import play.api.inject.guice.GuiceInjectorBuilder
+import play.api.inject.guice.{GuiceApplicationBuilder, GuiceInjectorBuilder}
 
 import scala.concurrent.duration._
 
@@ -34,10 +34,9 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     TestKit.shutdownActorSystem(system)
   }
 
-  val injector = new GuiceInjectorBuilder()
-    .injector
-
-  val userUnicityActorRef: ActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
 
   "An AUCTION" should {
 

@@ -5,9 +5,11 @@ import javax.inject.Inject
 
 import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
+import akka.pattern._
 import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
+import akka.util.Timeout
 import cqrs.commands.{ActivateUser, LockUser, RecordUserUnicity, RegisterUser}
 import cqrs.events._
 import models.RegistrationRejectedReason.RegistrationRejectedReason
@@ -30,34 +32,39 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]
 
+  implicit val timeout = Timeout(3 seconds)
+
+  import context.dispatcher // The ? pattern needs an execution context
+
   startWith(IdleState, InactiveUser)
 
   when(IdleState) {
     case Event(cmd: RegisterUser, _) =>
-      Logger.info(s"================ Sending RecordUserUnicity for user ${cmd.user}")
-      userUnicityActorRef ! RecordUserUnicity(cmd.user)
-      goto(AwaitingUserUnicityResponseState) // forMax 2.seconds
+      // Query the UserUnicity actor to check if the email and nickname are free
+      pipe(userUnicityActorRef ? RecordUserUnicity(cmd.user, sender())) to self
+
+      goto(AwaitingUserUnicityResponseState) forMax 2.seconds
   }
 
   when(AwaitingUserUnicityResponseState) {
-    case Event(UserUnicityRecordedReply(user, createdAt), _) =>
-      goto(RegisteredState) applying UserRegistered(user, createdAt) replying UserRegisteredReply
+    case Event(UserUnicityRecordedReply(user, theSender, createdAt), _) =>
+      theSender ! UserRegisteredReply
+      goto(RegisteredState) applying UserRegistered(user, createdAt)
 
-    case Event(UserUnicityEmailAlreadyRegisteredReply(user), _) =>
+    case Event(UserUnicityEmailAlreadyRegisteredReply(user, theSender), _) =>
       Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${user.emailAddress.email}, stopping the user actor")
-      stop replying RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
+      theSender ! RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
+      stop
 
-    case Event(UserUnicityNickNameAlreadyRegisteredReply(user), _) =>
+    case Event(UserUnicityNickNameAlreadyRegisteredReply(user, theSender), _) =>
       Logger.warn(s"UserActor RegisterUser command rejected due to duplicate nickname ${user.nickName}, stopping the user actor")
-      stop replying RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS)
+      theSender ! RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS)
+      stop
 
     case Event(StateTimeout, _) =>
-      Logger.error("==================-----------------=== StateTimeout")
-      stop replying RegistrationRejectedReply(RegistrationRejectedReason.USER_UNICITY_SERVICE_TIMEOUT)
-
-    case Event(x, _) =>
-      Logger.error(s"====================== event $x")
-      stay
+      Logger.error(s"UserActor $self received a StateTimeout while wsaiting for the UserUnicityActor, stopping the user actor")
+      // TODO ??? theSender ! RegistrationRejectedReply(RegistrationRejectedReason.USER_UNICITY_SERVICE_TIMEOUT)
+      stop
   }
 
   when(RegisteredState) {
@@ -117,10 +124,10 @@ object UserActor {
 
   def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem) = {
     val name = getActorName(user.userId)
-    Logger.info(s"Creating actor with name $name")
+    Logger.info(s"UserActor.createUserActor Creating actor with name $name")
 
     val actorRef: ActorRef = system.actorOf(Props(new UserActor(userUnicityActorRef)), name = name)
-    Logger.info(s"UserActor $name created with actorPath ${actorRef.path.toString}")
+    Logger.info(s"UserActor.createUserActor actor $name created with actorPath ${actorRef.path.toString}")
     actorRef
   }
 }
