@@ -2,7 +2,7 @@ package actors.userUnicity
 
 import java.time.Instant
 
-import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityListReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRecordedReply, UserUnicityListReply, UserUnicityNickNameAlreadyRecordedReply, UserUnicityRecordedReply}
 import actors.userUnicity.fsm._
 import akka.actor.{Actor, ActorRef, Props}
 import akka.persistence.fsm.PersistentFSM
@@ -22,27 +22,27 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
   override def domainEventClassTag: ClassTag[UserUnicityEvent] = classTag[UserUnicityEvent]
 
   override def preStart() = {
-    Logger.info("UserUnicityActor is started (preStart)")
+    Logger.info("UserUnicityActor is starting (preStart)")
   }
 
-  startWith(AwaitingFirstUserRegistration, EmptyUserUnictyList)
+  startWith(AwaitingFirstUserRecording, EmptyUserUnictyList)
 
-  when(AwaitingFirstUserRegistration) {
+  when(AwaitingFirstUserRecording) {
     case Event(cmd: RecordUserUnicity, _) =>
-      goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.theSender, cmd.createdAt)
+      goto(AwaitingNextUserRecording) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.theSender, cmd.createdAt)
 
     case Event(GetUserUnicityList, _) =>
       stay replying UserUnicityListReply(Nil)
   }
 
-  when(AwaitingNextUserRegistration) {
+  when(AwaitingNextUserRecording) {
     case Event(RecordUserUnicity(user, theSender, createdAt), NonEmptyUserUnicityList(userUnicityList)) =>
       findUserUnicityRecord(userUnicityList, user) match {
         case (Some(_), _) =>
-          stay replying UserUnicityEmailAlreadyRegisteredReply(user, theSender)
+          stay replying UserUnicityEmailAlreadyRecordedReply(user, theSender)
 
         case (_, Some(_)) =>
-          stay replying UserUnicityNickNameAlreadyRegisteredReply(user, theSender)
+          stay replying UserUnicityNickNameAlreadyRecordedReply(user, theSender)
 
         case _ =>
           stay applying UserUnicityRecorded(user, createdAt) replying UserUnicityRecordedReply(user, theSender, createdAt)
@@ -66,9 +66,9 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
 object UserUnicityActor {
 
-  case class UserUnicityEmailAlreadyRegisteredReply(user: User, theSender: ActorRef)
+  case class UserUnicityEmailAlreadyRecordedReply(user: User, theSender: ActorRef)
 
-  case class UserUnicityNickNameAlreadyRegisteredReply(user: User, theSender: ActorRef)
+  case class UserUnicityNickNameAlreadyRecordedReply(user: User, theSender: ActorRef)
 
   case class UserUnicityRecordedReply(user: User, theSender: ActorRef, createdAt: Instant)
 

@@ -1,13 +1,12 @@
 package actors.user
 
 import java.util.UUID
-import javax.inject.Inject
 
 import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
-import akka.pattern._
-import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRecordedReply, UserUnicityNickNameAlreadyRecordedReply, UserUnicityRecordedReply}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.pattern._
 import akka.persistence.fsm.PersistentFSM
 import akka.util.Timeout
 import cqrs.commands.{ActivateUser, LockUser, RecordUserUnicity, RegisterUser}
@@ -51,12 +50,12 @@ class UserActor(userUnicityActorRef: ActorRef)
       theSender ! UserRegisteredReply
       goto(RegisteredState) applying UserRegistered(user, createdAt)
 
-    case Event(UserUnicityEmailAlreadyRegisteredReply(user, theSender), _) =>
+    case Event(UserUnicityEmailAlreadyRecordedReply(user, theSender), _) =>
       Logger.warn(s"UserActor RegisterUser command rejected due to duplicate email ${user.emailAddress.email}, stopping the user actor")
       theSender ! RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS)
       stop
 
-    case Event(UserUnicityNickNameAlreadyRegisteredReply(user, theSender), _) =>
+    case Event(UserUnicityNickNameAlreadyRecordedReply(user, theSender), _) =>
       Logger.warn(s"UserActor RegisterUser command rejected due to duplicate nickname ${user.nickName}, stopping the user actor")
       theSender ! RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS)
       stop

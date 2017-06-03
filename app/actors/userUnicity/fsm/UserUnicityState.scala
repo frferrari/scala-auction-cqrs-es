@@ -7,10 +7,10 @@ import akka.persistence.fsm.PersistentFSM.FSMState
   */
 sealed trait UserUnicityState extends FSMState
 
-case object AwaitingFirstUserRegistration extends UserUnicityState {
+case object AwaitingFirstUserRecording extends UserUnicityState {
   override def identifier: String = "AwaitingFirstUserRegistration"
 }
 
-case object AwaitingNextUserRegistration extends UserUnicityState {
+case object AwaitingNextUserRecording extends UserUnicityState {
   override def identifier: String = "AwaitNextUserRegistration"
 }

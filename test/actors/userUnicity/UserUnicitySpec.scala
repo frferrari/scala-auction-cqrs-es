@@ -3,7 +3,7 @@ package actors.userUnicity
 import java.time.Instant
 
 import actors.ActorCommonsSpec
-import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRecordedReply, UserUnicityNickNameAlreadyRecordedReply, UserUnicityRecordedReply}
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands._
@@ -55,14 +55,14 @@ class UserUnicitySpec
     "refuse to record a user with an already used email" in {
       userUnicityActorRef ! RecordUserUnicity(seller2, self, Instant.now())
       expectMsgPF() {
-        case (reply: UserUnicityEmailAlreadyRegisteredReply) => ()
+        case (reply: UserUnicityEmailAlreadyRecordedReply) => ()
       }
     }
 
     "refuse to record a user with an already used nickname" in {
       userUnicityActorRef ! RecordUserUnicity(seller3, self, Instant.now())
       expectMsgPF() {
-        case (reply: UserUnicityNickNameAlreadyRegisteredReply) => ()
+        case (reply: UserUnicityNickNameAlreadyRecordedReply) => ()
       }
     }
 

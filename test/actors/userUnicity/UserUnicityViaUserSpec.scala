@@ -45,12 +45,12 @@ class UserUnicityViaUserSpec
     val (sellerName3, sellerActor3) = (seller3.nickName, UserActor.createUserActor(seller3, userUnicityActorRef))
     val (sellerName4, sellerActor4) = (seller4.nickName, UserActor.createUserActor(seller4, userUnicityActorRef))
 
-    "accept to record a user with an unused email and unused nickname (first attempt to record a user)" in {
+    "be able to record a user with an unused email and unused nickname (first attempt to record a user)" in {
       sellerActor1 ! RegisterUser(seller1, Instant.now())
       expectMsg(UserRegisteredReply)
     }
 
-    "check that the UserUnicityList contains seller1's emailAddress/nickName" in {
+    "successfully check that the UserUnicityList contains seller1's emailAddress/nickName" in {
       userUnicityActorRef ! GetUserUnicityList
       expectMsgPF() {
         case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
@@ -58,12 +58,12 @@ class UserUnicityViaUserSpec
       }
     }
 
-    "refuse to record a user with an already used email" in {
+    "be refused to record a user with an already used email" in {
       sellerActor2 ! RegisterUser(seller2, Instant.now())
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS))
     }
 
-    "check that the UserUnicityList contains only seller1's emailAddress/nickName" in {
+    "successfully check that the UserUnicityList contains only seller1's emailAddress/nickName" in {
       userUnicityActorRef ! GetUserUnicityList
       expectMsgPF() {
         case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
@@ -71,12 +71,12 @@ class UserUnicityViaUserSpec
       }
     }
 
-    "refuse to record a user with an already used nickname" in {
+    "be refused to record a user with an already used nickname" in {
       sellerActor3 ! RegisterUser(seller3, Instant.now())
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS))
     }
 
-    "check that the UserUnicityList still contains only seller1's emailAddress/nickName" in {
+    "successfully check that the UserUnicityList still contains only seller1's emailAddress/nickName" in {
       userUnicityActorRef ! GetUserUnicityList
       expectMsgPF() {
         case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
@@ -84,12 +84,12 @@ class UserUnicityViaUserSpec
       }
     }
 
-    "accept to record a user with an unused email and unused nickname" in {
+    "be able to record a user with an unused email and unused nickname" in {
       sellerActor4 ! RegisterUser(seller4, Instant.now())
       expectMsg(UserRegisteredReply)
     }
 
-    "check that the UserUnicityList contains 2 entries" in {
+    "successfully check that the UserUnicityList contains 2 seller1's and seller4's emailAddress/nickName" in {
       userUnicityActorRef ! GetUserUnicityList
       expectMsgPF() {
         case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 2 &&
