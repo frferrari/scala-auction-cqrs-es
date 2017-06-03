@@ -5,12 +5,16 @@ import java.time.Instant
 import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
-import akka.actor.ActorSystem
+import actors.userUnicity.UserUnicityActor
+import actors.userUnicity.UserUnicityActor.UserUnicityListReply
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
-import cqrs.commands.{GetCurrentState, PlaceBid, ScheduleAuction}
+import cqrs.commands.{GetCurrentState, GetUserUnicityList, PlaceBid, ScheduleAuction}
 import models.BidRejectionReason
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import play.api.inject.BindingKey
+import play.api.inject.guice.GuiceApplicationBuilder
 
 import scala.concurrent.duration._
 
@@ -28,18 +32,29 @@ class AuctionActorSpec4() extends TestKit(ActorSystem("AuctionActorSpec"))
     TestKit.shutdownActorSystem(system)
   }
 
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+
   "An AUCTION W/O reserve price W/2 bidders" should {
 
     val auction = makeAuction(
       startPrice = 0.10,
       bidIncrement = 0.10,
-      startsAt = Instant.now(),
+      startsAt = Instant.now().plusSeconds(8), // mandatory as we check that it is forbidden to place a bid on a scheduled auction
       lastsSeconds = 20,
       hasAutomaticRenewal = false,
       hasTimeExtension = false,
       sellerAUUID
     )
     val auctionActor = AuctionActor.createAuctionActor(auction)
+
+    "ensure that the UserUnicityActor is ready" in {
+      userUnicityActorRef ! GetUserUnicityList
+      expectMsgPF(5.seconds) {
+        case (UserUnicityListReply(userUnicityList)) if userUnicityList.isEmpty => ()
+      }
+    }
 
     "start an auction in ScheduledState" in {
       auctionActor ! ScheduleAuction(auction)
@@ -50,7 +65,7 @@ class AuctionActorSpec4() extends TestKit(ActorSystem("AuctionActorSpec"))
       }
     }
 
-    "reject a bid made by it's owner" in {
+    "reject a bid made by the auction owner" in {
       expectNoMsg(10.seconds) // Let the auction start
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, sellerAName, sellerAUUID, auction.stock, auction.currentPrice, Instant.now()))
       expectMsgPF(10.seconds) {
@@ -58,8 +73,8 @@ class AuctionActorSpec4() extends TestKit(ActorSystem("AuctionActorSpec"))
       }
     }
 
-    // TODO Bid on a seller's account locked
-    // TODO Bid on a bidder's account locked
+    // TODO Bid on a seller account who's locked
+    // TODO Bid on a bidder account who's locked
 
     "reject a bid with a quantity lower than 1" in {
       auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 0, auction.currentPrice, Instant.now()))

@@ -2,14 +2,14 @@ package actors.userUnicity
 
 import java.time.Instant
 
-import actors.user.fsm.{InactiveUser, UserStateData}
-import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
+import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRegisteredReply, UserUnicityListReply, UserUnicityNickNameAlreadyRegisteredReply, UserUnicityRecordedReply}
 import actors.userUnicity.fsm._
 import akka.actor.{Actor, ActorRef, Props}
 import akka.persistence.fsm.PersistentFSM
-import cqrs.commands.RecordUserUnicity
+import cqrs.commands.{GetUserUnicityList, RecordUserUnicity}
 import cqrs.events._
 import models.{User, UserUnicity}
+import play.api.Logger
 
 import scala.reflect.{ClassTag, classTag}
 
@@ -21,11 +21,18 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
 
   override def domainEventClassTag: ClassTag[UserUnicityEvent] = classTag[UserUnicityEvent]
 
+  override def preStart() = {
+    Logger.info("UserUnicityActor is started (preStart)")
+  }
+
   startWith(AwaitingFirstUserRegistration, EmptyUserUnictyList)
 
   when(AwaitingFirstUserRegistration) {
     case Event(cmd: RecordUserUnicity, _) =>
       goto(AwaitingNextUserRegistration) applying UserUnicityRecorded(cmd.user, cmd.createdAt) replying UserUnicityRecordedReply(cmd.user, cmd.theSender, cmd.createdAt)
+
+    case Event(GetUserUnicityList, _) =>
+      stay replying UserUnicityListReply(Nil)
   }
 
   when(AwaitingNextUserRegistration) {
@@ -40,6 +47,9 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
         case _ =>
           stay applying UserUnicityRecorded(user, createdAt) replying UserUnicityRecordedReply(user, theSender, createdAt)
       }
+
+    case Event(GetUserUnicityList, NonEmptyUserUnicityList(userUnicityList)) =>
+      stay replying UserUnicityListReply(userUnicityList)
   }
 
   override def applyEvent(event: UserUnicityEvent, stateDataBefore: UserUnicityStateData): UserUnicityStateData = (event, stateDataBefore) match {
@@ -50,7 +60,7 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
       stateDataBefore
   }
 
-  def findUserUnicityRecord(userUnicityList: Seq[UserUnicity], user: User) =
+  def findUserUnicityRecord(userUnicityList: Seq[UserUnicity], user: User): (Option[UserUnicity], Option[UserUnicity]) =
     (userUnicityList.find(_.emailAddress == user.emailAddress), userUnicityList.find(_.nickName == user.nickName))
 }
 
@@ -62,7 +72,9 @@ object UserUnicityActor {
 
   case class UserUnicityRecordedReply(user: User, theSender: ActorRef, createdAt: Instant)
 
-  def props = Props[UserUnicityActor]
+  case class UserUnicityListReply(userUnicitList: Seq[UserUnicity])
+
+  def props: Props = Props[UserUnicityActor]
 
   final val name = "UserUnicityActor"
 }

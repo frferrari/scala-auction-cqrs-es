@@ -5,6 +5,7 @@ import java.time.Instant
 import actors.ActorCommonsSpec
 import actors.user.UserActor
 import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
+import actors.userUnicity.UserUnicityActor.UserUnicityListReply
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands._
@@ -34,28 +35,67 @@ class UserUnicityViaUserSpec
 
   "A USER actor" should {
 
-    val seller1 = makeUser("user1@pluto.space", "user1", "Robert", "John")
+    val seller1 = makeUser("user1@pluto.space", "user1", "Robert1", "John1")
+    val seller2 = makeUser("user1@pluto.space", "user2", "Robert2", "John2")
+    val seller3 = makeUser("user3@pluto.space", "user1", "Robert3", "John3")
+    val seller4 = makeUser("user4@pluto.space", "user4", "Robert4", "John4")
+
     val (sellerName1, sellerActor1) = (seller1.nickName, UserActor.createUserActor(seller1, userUnicityActorRef))
-
-    val seller2 = makeUser("user1@pluto.space", "user2", "Robert", "John")
     val (sellerName2, sellerActor2) = (seller2.nickName, UserActor.createUserActor(seller2, userUnicityActorRef))
-
-    val seller3 = makeUser("user3@pluto.space", "user1", "Robert", "John")
     val (sellerName3, sellerActor3) = (seller3.nickName, UserActor.createUserActor(seller3, userUnicityActorRef))
+    val (sellerName4, sellerActor4) = (seller4.nickName, UserActor.createUserActor(seller4, userUnicityActorRef))
 
-    "accept to register a user with an unused email and unused nickname" in {
+    "accept to record a user with an unused email and unused nickname (first attempt to record a user)" in {
       sellerActor1 ! RegisterUser(seller1, Instant.now())
       expectMsg(UserRegisteredReply)
     }
 
-    "refuse to register a user with an already used email" in {
+    "check that the UserUnicityList contains seller1's emailAddress/nickName" in {
+      userUnicityActorRef ! GetUserUnicityList
+      expectMsgPF() {
+        case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
+          userUnicityList.exists(uu => uu.emailAddress == seller1.emailAddress && uu.nickName == seller1.nickName) => ()
+      }
+    }
+
+    "refuse to record a user with an already used email" in {
       sellerActor2 ! RegisterUser(seller2, Instant.now())
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS))
     }
 
-    "refuse to register a user with an already used nickname" in {
+    "check that the UserUnicityList contains only seller1's emailAddress/nickName" in {
+      userUnicityActorRef ! GetUserUnicityList
+      expectMsgPF() {
+        case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
+          userUnicityList.exists(uu => uu.emailAddress == seller1.emailAddress && uu.nickName == seller1.nickName) => ()
+      }
+    }
+
+    "refuse to record a user with an already used nickname" in {
       sellerActor3 ! RegisterUser(seller3, Instant.now())
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS))
+    }
+
+    "check that the UserUnicityList still contains only seller1's emailAddress/nickName" in {
+      userUnicityActorRef ! GetUserUnicityList
+      expectMsgPF() {
+        case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 1 &&
+          userUnicityList.exists(uu => uu.emailAddress == seller1.emailAddress && uu.nickName == seller1.nickName) => ()
+      }
+    }
+
+    "accept to record a user with an unused email and unused nickname" in {
+      sellerActor4 ! RegisterUser(seller4, Instant.now())
+      expectMsg(UserRegisteredReply)
+    }
+
+    "check that the UserUnicityList contains 2 entries" in {
+      userUnicityActorRef ! GetUserUnicityList
+      expectMsgPF() {
+        case (UserUnicityListReply(userUnicityList)) if userUnicityList.length == 2 &&
+        userUnicityList.exists(uu => uu.emailAddress == seller1.emailAddress && uu.nickName == seller1.nickName) &&
+        userUnicityList.exists(uu => uu.emailAddress == seller4.emailAddress && uu.nickName == seller4.nickName) => ()
+      }
     }
   }
 }

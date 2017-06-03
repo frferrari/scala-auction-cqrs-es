@@ -59,7 +59,7 @@ class UserUnicitySpec
       }
     }
 
-    "refuse to register a user with an already used nickname" in {
+    "refuse to record a user with an already used nickname" in {
       userUnicityActorRef ! RecordUserUnicity(seller3, self, Instant.now())
       expectMsgPF() {
         case (reply: UserUnicityNickNameAlreadyRegisteredReply) => ()

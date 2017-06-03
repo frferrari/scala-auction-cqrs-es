@@ -3,12 +3,12 @@ package actors.auction
 import java.time.Instant
 import java.util.UUID
 
+import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ClosedState, FinishedAuction}
 import actors.user.UserActor
 import actors.user.UserActor.UserRegisteredReply
-import actors.ActorCommonsSpec
-import actors.userUnicity.{EmailUnicityMock, UserUnicityActor}
+import actors.userUnicity.UserUnicityActor
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
@@ -16,7 +16,7 @@ import cqrs.commands._
 import models.{AuctionReason, BidRejectionReason, UserReason}
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import play.api.inject.BindingKey
-import play.api.inject.guice.GuiceInjectorBuilder
+import play.api.inject.guice.GuiceApplicationBuilder
 
 import scala.concurrent.duration._
 
@@ -35,10 +35,9 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec
     TestKit.shutdownActorSystem(system)
   }
 
-  val injector = new GuiceInjectorBuilder()
-    .injector
-
-  val userUnicityActorRef: ActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
 
   "A Fixed Price AUCTION" should {
 
