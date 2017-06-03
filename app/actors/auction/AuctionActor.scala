@@ -1,6 +1,6 @@
 package actors.auction
 
-import java.time.{Instant, LocalDate}
+import java.time.Instant
 import java.util.UUID
 
 import actors.auction.AuctionActor._
@@ -137,7 +137,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   override def domainEventClassTag: ClassTag[AuctionEvent] = classTag[AuctionEvent]
 
   override def postStop(): Unit = {
-    unsubscribeUserEvents
+    unsubscribeUserEvents()
   }
 
   startWith(fsm.IdleState, InactiveAuction)
@@ -260,14 +260,8 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // Validated bid
       else {
         stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
-          case ActiveAuction(auction) => startCloseTimer(auction)
+          case ActiveAuction(activeAuction) => startCloseTimer(activeAuction)
         }
-
-        // stay applying BidPlaced(normalizedUsersBid) replying bidPlacedWithInfoReply(stateData) // BidPlacedReply(stateData)
-        // TODO How to reply with the stateData resulting from the event application ? Is this an acceptable alternative way ?
-        //        applyEvent(BidPlaced(normalizedUsersBid), stateData) match {
-        //          case stateDataAfter => stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply(stateDataAfter)
-        //        }
       }
 
     // A bid was placed on an auction with bids
@@ -314,7 +308,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // Validated bid
       else {
         stay applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
-          case ActiveAuction(auction) => startCloseTimer(auction)
+          case ActiveAuction(activeAuction) => startCloseTimer(activeAuction)
         }
       }
 
@@ -456,7 +450,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //
   onTransition {
     case _ -> ClosedState =>
-      unsubscribeUserEvents
+      unsubscribeUserEvents()
 
     case from -> to =>
       Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} Transitioning from $from to $to")
@@ -487,13 +481,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       // A bid was placed on a fixed price auction
       applyBidPlacedEventOnFixedPriceAuction(bidPlaced, activeAuction)
 
-    case (auctionClosed: AuctionClosed, stateData: ActiveAuction) =>
+    case (auctionClosed: AuctionClosed, _: ActiveAuction) =>
       stateDataBefore.closeAuction(auctionClosed)
 
     case (auctionRestarted: AuctionRestarted, ActiveAuction(auction)) =>
       stateDataBefore.restartAuction(auction)
 
-    case (e, s) =>
+    case _ =>
       // Unhandled case
       stateDataBefore
   }
@@ -527,7 +521,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       createdAt = bidPlaced.usersBid.createdAt
     )
 
-    stateDataBefore.placeBids(List(bid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
+    stateDataBefore.placeBids(List(bid), isSold = false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock)
   }
 
   /**
@@ -557,7 +551,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         createdAt = bidPlaced.usersBid.createdAt
       )
 
-      stateDataBefore.placeBids(List(bid), false, endsAt, stateDataBefore.auction.currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), isSold = false, endsAt, stateDataBefore.auction.currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else if (bidPlaced.usersBid.bidderId == highestBid.bidderId && stateDataBefore.auction.reservePrice.isDefined) {
       /**
@@ -588,7 +582,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         createdAt = bidPlaced.usersBid.createdAt
       )
 
-      stateDataBefore.placeBids(List(bid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(bid), isSold = false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else if (bidPlaced.usersBid.bidPrice <= highestBid.bidMaxPrice) {
       /**
@@ -611,7 +605,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       val updatedHighestBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = bidPlaced.usersBid.bidPrice)
 
       // It is MANDATORY to keep the order of the bids in the list below
-      stateDataBefore.placeBids(List(updatedHighestBid, bid), false, endsAt, bidPlaced.usersBid.bidPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+      stateDataBefore.placeBids(List(updatedHighestBid, bid), isSold = false, endsAt, bidPlaced.usersBid.bidPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
     }
     else {
       /**
@@ -643,12 +637,12 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         * the highest bidder max bid value
         */
       if (stateDataBefore.auction.currentPrice == highestBid.bidMaxPrice) {
-        stateDataBefore.placeBids(List(newHighestBid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+        stateDataBefore.placeBids(List(newHighestBid), isSold = false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
       else {
         val newBid = highestBid.copy(isVisible = true, isAuto = true, timeExtended = isTimeExtended, bidPrice = highestBid.bidMaxPrice)
         // It is MANDATORY to keep the order of the bids in the list below
-        stateDataBefore.placeBids(List(newHighestBid, newBid), false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
+        stateDataBefore.placeBids(List(newHighestBid, newBid), isSold = false, endsAt, currentPrice, stateDataBefore.auction.stock, stateDataBefore.auction.originalStock, None)
       }
     }
   }
@@ -687,7 +681,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         )
 
       case remainingStock =>
-        Logger.info(s"AuctionActor ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, remaining stock is ${remainingStock}, duplicate the auction")
+        Logger.info(s"AuctionActor ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, remaining stock is $remainingStock, duplicate the auction")
         val bid = Bid(
           bidderId = bidPlaced.usersBid.bidderId,
           bidderName = bidPlaced.usersBid.bidderName,
@@ -723,9 +717,9 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   /**
     *
-    * @param auction
+    * @param auction The auction who wants to subscribe to user actor events
     */
-  def subscribeUserEvents(auction: Auction) = {
+  def subscribeUserEvents(auction: Auction): Unit = {
     val userActorName: String = UserActor.getActorName(auction.sellerId)
     gSellerActorName = s"/user/$userActorName"
     val userActor: ActorSelection = context.system.actorSelection(gSellerActorName)
@@ -736,10 +730,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} has SUBSCRIBED to $gSellerActorName Transition events")
   }
 
-  /**
-    *
-    */
-  def unsubscribeUserEvents = (gHasSubscribedToUserEvents, gSellerId) match {
+  def unsubscribeUserEvents(): Unit = (gHasSubscribedToUserEvents, gSellerId) match {
     case (true, Some(sellerId)) =>
       val userActorName: String = UserActor.getActorName(sellerId)
       gSellerActorName = s"/user/$userActorName"
@@ -842,9 +833,9 @@ object AuctionActor {
   trait BidPlacedReply
 
   object BidPlacedReply {
-    def apply(stateData: => AuctionStateData) = stateData match {
+    def apply(stateData: => AuctionStateData): BidPlacedReply = stateData match {
       case ActiveAuction(auction) =>
-        new BidPlacedWithInfoReply(
+        BidPlacedWithInfoReply(
           auctionId = auction.auctionId,
           stock = auction.stock,
           currentPrice = auction.currentPrice,
@@ -852,7 +843,9 @@ object AuctionActor {
           highestBidderId = auction.bids.headOption.map(_.bidderId),
           highestBidderPrice = auction.bids.headOption.map(_.bidMaxPrice)
         )
-      case _ => BidPlacedReply
+
+      case _ =>
+        BidPlacedReply
     }
   }
 

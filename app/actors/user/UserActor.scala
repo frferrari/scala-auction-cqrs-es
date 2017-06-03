@@ -31,16 +31,16 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   override def domainEventClassTag: ClassTag[UserEvent] = classTag[UserEvent]
 
-  implicit val timeout = Timeout(3 seconds)
+  implicit val timeout = Timeout(3.seconds)
 
   import context.dispatcher // The ? pattern needs an execution context
 
   startWith(IdleState, InactiveUser)
 
   when(IdleState) {
-    case Event(cmd: RegisterUser, _) =>
+    case Event(RegisterUser(user, createdAt), _) =>
       // Query the UserUnicity actor to check if the email and nickname are free
-      pipe(userUnicityActorRef ? RecordUserUnicity(cmd.user, sender())) to self
+      pipe(userUnicityActorRef ? RecordUserUnicity(user, sender())) to self
 
       goto(AwaitingUserUnicityResponseState) forMax 2.seconds
   }
@@ -121,7 +121,7 @@ object UserActor {
 
   def getActorName(userId: UUID) = s"user-$userId"
 
-  def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem) = {
+  def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem): ActorRef = {
     val name = getActorName(user.userId)
     Logger.info(s"UserActor.createUserActor Creating actor with name $name")
 
