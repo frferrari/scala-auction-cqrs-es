@@ -6,10 +6,11 @@ import java.util.UUID
 import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ClosedState, FinishedAuction}
-import actors.user.UserActor
 import actors.user.UserActor.UserRegisteredReply
+import actors.user.UserActorHelpers
+import actors.userSupervisor.UserSupervisor
 import actors.userUnicity.UserUnicityActor
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
 import cqrs.commands._
@@ -29,7 +30,8 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec
   with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll {
+  with BeforeAndAfterAll
+  with UserActorHelpers {
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
@@ -38,47 +40,55 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec
   val app = new GuiceApplicationBuilder().build()
   val injector = app.injector
   val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val userSupervisorActorRef = system.actorOf(Props(new UserSupervisor(userUnicityActorRef)), name = UserSupervisor.name)
+
+  val seller = makeUser("contact@pluto.space", "hhgg", "Robert", "John")
+  val auction = makeFixedPriceAuction(
+    startPrice = 0.10,
+    startsAt = Instant.now(),
+    lastsSeconds = 30,
+    stock = 10,
+    hasAutomaticRenewal = false,
+    sellerId = seller.userId
+  )
+
+  val auctionActor = AuctionActor.createAuctionActor(auction)
 
   "A Fixed Price AUCTION" should {
 
-    "reject a bid on an auction whose seller is Locked" in {
-      val seller = makeUser("contact@pluto.space", "hhgg", "Robert", "John")
-      val (sellerName, sellerActor) = (seller.nickName, UserActor.createUserActor(seller, userUnicityActorRef))
-
-      // Register and Lock the seller
-      sellerActor ! RegisterUser(seller, Instant.now())
+    "successfully create a User (Seller)" in {
+      userSupervisorActorRef ! CreateUser(seller)
       expectMsg(UserRegisteredReply)
+    }
 
-      sellerActor ! LockUser(seller.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
-      expectNoMsg(2.seconds)
-
-      val auction = makeFixedPriceAuction(
-        startPrice = 0.10,
-        startsAt = Instant.now(),
-        lastsSeconds = 30,
-        stock = 10,
-        hasAutomaticRenewal = false,
-        sellerId = seller.userId
-      )
-      val auctionActor = AuctionActor.createAuctionActor(auction)
+    "successfully start an Auction" in {
       auctionActor ! StartAuction(auction)
       expectMsg(AuctionStartedReply)
-      expectNoMsg(2.seconds)
+    }
 
-      // Place a bid which should be rejected (seller LOCKED)
+    "successfully Lock a Seller" in {
+      getUserActorSelection(seller.userId) ! LockUser(seller.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
+      expectNoMsg(2.seconds) // Needed to allow the seller actor transition event to be processed by the auction actor
+    }
+
+    "reject a bid on an auction whose seller is Locked" in {
       auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 10, 0.10, Instant.now()))
       expectMsgPF() {
         case BidRejectedReply(_, BidRejectionReason.SELLER_LOCKED) => ()
       }
+    }
 
-      // UNLOCK the seller
-      sellerActor ! UnlockUser(seller.userId, Instant.now())
-      expectNoMsg(2.seconds)
+    "successfully Unlock a Seller" in {
+      getUserActorSelection(seller.userId) ! UnlockUser(seller.userId, Instant.now())
+      expectNoMsg(2.seconds) // Needed to allow the seller actor transition event to be processed by the auction actor
+    }
 
-      // Place a bid which should be accepted (seller UNLOCKED)
+    "accept a bid on an auction whose seller is NOT Locked" in {
       auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 10, 0.10, Instant.now()))
       expectMsg(AuctionClosedReply(AuctionReason.BID_NO_REMAINING_STOCK))
+    }
 
+    "successfully check the auction state" in {
       auctionActor ! GetCurrentState
       val expectedBidEssentials = List(
         (bidderAUUID, 10, auction.currentPrice, auction.currentPrice, true, false, false)
@@ -91,7 +101,7 @@ class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec
         => ()
       }
 
-      expectNoMsg(2.seconds)
+      // expectNoMsg(2.seconds)
     }
   }
 }
