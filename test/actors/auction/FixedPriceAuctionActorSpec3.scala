@@ -17,7 +17,7 @@ import scala.concurrent.duration._
 /**
   * Created by Francois FERRARI on 17/05/2017
   */
-class FixedPriceAuctionActorSpec3() extends TestKit(ActorSystem("AuctionActorSpec"))
+class FixedPriceAuctionActorSpec3() extends TestKit(ActorSystem("AuctionSystem"))
   with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike

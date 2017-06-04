@@ -5,9 +5,9 @@ import java.util.UUID
 
 import actors.auction.AuctionActor._
 import actors.auction.fsm._
-import actors.user.UserActor
+import actors.user.UserActorHelpers
 import actors.user.fsm.LockedState
-import akka.actor.{Actor, ActorRef, ActorSelection, ActorSystem, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.persistence.fsm.PersistentFSM
 import akka.persistence.fsm.PersistentFSM.{CurrentState, SubscribeTransitionCallBack, Transition, UnsubscribeTransitionCallBack}
 import cqrs.UsersBid
@@ -24,110 +24,14 @@ import scala.reflect._
 /**
   * Created by Francois FERRARI on 13/05/2017
   */
-
-/*
-object Test {
-  def main(args: Array[String]): Unit = {
-    Logger.info("Main is starting")
-
-    implicit val system = ActorSystem("andycotSystem")
-
-    val sellerA = User(
-      userId = UUID.randomUUID(),
-      emailAddress = EmailAddress("bob.eponge@cartoon.universe"),
-      password = "",
-      isSuperAdmin = false,
-      receivesNewsletter = false,
-      receivesRenewals = false,
-      currency = "EUR",
-      nickName = "sellerA",
-      lastName = "Eponge",
-      firstName = "Bob",
-      lang = "fr",
-      avatar = "",
-      dateOfBirth = LocalDate.of(2000, 1, 1),
-      phone = "",
-      mobile = "",
-      fax = "",
-      description = "",
-      sendingCountry = "",
-      invoiceName = "",
-      invoiceAddress1 = "",
-      invoiceAddress2 = "",
-      invoiceZipCode = "",
-      invoiceCity = "",
-      invoiceCountry = "",
-      vatIntra = "",
-      holidayStartAt = None,
-      holidayEndAt = None,
-      holidayHideId = UUID.randomUUID(),
-      bidIncrement = 0.10,
-      listedTimeId = UUID.randomUUID(),
-      slug = "",
-      watchedAuctions = Nil,
-      activatedAt = Some(Instant.now()),
-      lockedAt = None,
-      lastLoginAt = None,
-      unregisteredAt = None,
-      createdAt = Instant.now(),
-      updatedAt = None
-    )
-
-    val (sellerAName, sellerAActor) = ("sellerA", UserActor.createUserActor(sellerA))
-
-    val (bidderAName, bidderAUUID) = ("francois", UUID.randomUUID())
-
-    val instantNow = Instant.now()
-
-    val auction = Auction(
-      UUID.randomUUID(),
-      None, None, None,
-      sellerA.userId,
-      UUID.randomUUID(), UUID.randomUUID(), AuctionType.AUCTION,
-      "Eiffel tower", "", 2010,
-      UUID.randomUUID(), Nil, Nil, None,
-      Nil,
-      0.10, 0.10, 0.10, None,
-      1, 1,
-      instantNow.plusSeconds(5), None, instantNow.plusSeconds(60 * 60 * 24),
-      // instantNow, None, instantNow.plusSeconds(60 * 60 * 24),
-      hasAutomaticRenewal = true, hasTimeExtension = true,
-      0, 0, 0,
-      "EUR",
-      None, Nil,
-      None, None,
-      false,
-      instantNow
-    )
-
-    sellerAActor ! RegisterUser(sellerA, Instant.now())
-    Thread.sleep(3000)
-
-    val auctionActorRef: ActorRef = AuctionActor.createAuctionActor(auction)
-
-    auctionActorRef ! ScheduleAuction(auction)
-    // auctionActorRef ! StartAuction(auction)
-    // auctionActorRef ! CloseAuction(auction.auctionId.get, UUID.randomUUID(), UUID.randomUUID(), "Closed manually", Instant.now())
-    auctionActorRef ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
-
-    Thread.sleep(3000)
-    sellerAActor ! LockUser(sellerA.userId, UserReason.UNPAID_INVOICE, UUID.randomUUID(), Instant.now())
-    Thread.sleep(3000)
-    sellerAActor ! UnlockUser(sellerA.userId, Instant.now())
-
-    Thread.sleep(60000)
-
-    system.terminate()
-  }
-}
-*/
-
-class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] {
+class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] with UserActorHelpers {
   val msToExtend = 5000
 
-  // Updated by a subscription to the seller's actor transition events
+  /**
+    * The following global variables are updated based on the seller's actor transition events
+    * received after having subscribed to this user's actor events
+    */
   var gSellerLocked: Boolean = false
-  // sellerActorName is of type "/user/user-e76988bb-d8e6-4e46-86ea-d41ca460139a"
   var gSellerActorName: String = ""
   var gSellerId: Option[UUID] = None
   var gHasSubscribedToUserEvents: Boolean = false
@@ -148,27 +52,28 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //    context.system.eventStream.subscribe(self, classOf[UserUnlocked])
   //  }
 
-  //
-  // 	  ###   ######  #       #######
-  // 	   #    #     # #       #
-  // 	   #    #     # #       #
-  // 	   #    #     # #       #####
-  // 	   #    #     # #       #
-  // 	   #    #     # #       #
-  // 	  ###   ######  ####### #######
-  //
+  /**
+    * 	  ###   ######  #       #######
+    * 	   #    #     # #       #
+    * 	   #    #     # #       #
+    * 	   #    #     # #       #####
+    * 	   #    #     # #       #
+    * 	   #    #     # #       #
+    * 	  ###   ######  ####### #######
+    */
   when(fsm.IdleState) {
     case Event(evt: StartAuction, _) =>
+      gSellerId = Some(evt.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(evt.auction.sellerId)
+
       // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
       subscribeUserEvents(evt.auction)
-
-      // Keep the sellerId
-      gSellerId = Some(evt.auction.sellerId)
 
       goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
 
     case Event(evt: ScheduleAuction, _) =>
       gSellerId = Some(evt.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(evt.auction.sellerId)
 
       goto(ScheduledState) applying AuctionScheduled(evt.auction) replying AuctionScheduledReply andThen {
         case ActiveAuction(auction) => startScheduleTimer(auction)
@@ -178,15 +83,15 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
   }
 
-  //
-  // 	 #####   #####  #     # ####### ######  #     # #       ####### ######
-  // 	#     # #     # #     # #       #     # #     # #       #       #     #
-  // 	#       #       #     # #       #     # #     # #       #       #     #
-  // 	 #####  #       ####### #####   #     # #     # #       #####   #     #
-  // 	      # #       #     # #       #     # #     # #       #       #     #
-  // 	#     # #     # #     # #       #     # #     # #       #       #     #
-  // 	 #####   #####  #     # ####### ######   #####  ####### ####### ######
-  //
+  /**
+    *  	 #####   #####  #     # ####### ######  #     # #       ####### ######
+    *  	#     # #     # #     # #       #     # #     # #       #       #     #
+    *  	#       #       #     # #       #     # #     # #       #       #     #
+    *  	 #####  #       ####### #####   #     # #     # #       #####   #     #
+    *  	      # #       #     # #       #     # #     # #       #       #     #
+    *  	#     # #     # #     # #       #     # #     # #       #       #     #
+    *  	 #####   #####  #     # ####### ######   #####  ####### ####### ######
+    */
   when(ScheduledState) {
     case Event(evt: StartAuction, _) =>
       subscribeUserEvents(evt.auction)
@@ -210,15 +115,15 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       goto(SuspendedState) applying AuctionSuspended(evt.auctionId, evt.suspendedBy, evt.createdAt) replying AuctionSuspendedReply(evt.reason)
   }
 
-  //
-  // 	 #####  #######    #    ######  ####### ####### ######
-  //	#     #    #      # #   #     #    #    #       #     #
-  // 	#          #     #   #  #     #    #    #       #     #
-  // 	 #####     #    #     # ######     #    #####   #     #
-  // 	      #    #    ####### #   #      #    #       #     #
-  // 	#     #    #    #     # #    #     #    #       #     #
-  // 	 #####     #    #     # #     #    #    ####### ######
-  //
+  /**
+    *  	 #####  #######    #    ######  ####### ####### ######
+    * 	#     #    #      # #   #     #    #    #       #     #
+    *  	#          #     #   #  #     #    #    #       #     #
+    *  	 #####     #    #     # ######     #    #####   #     #
+    *  	      #    #    ####### #   #      #    #       #     #
+    *  	#     #    #    #     # #    #     #    #       #     #
+    *  	 #####     #    #     # #     #    #    ####### ######
+    */
   when(StartedState) {
     // A bid was placed on an auction without bids
     case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
@@ -333,10 +238,10 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       else if (gSellerLocked) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.SELLER_LOCKED)
       }
-      // Is the bidder allowed to bid ?
-      else if (!canBid(normalizedUsersBid.bidderId)) {
-        stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
-      }
+      // Is the bidder allowed to bid ? This can't happen as it would be forbidden upstream
+      // else if (!canBid(normalizedUsersBid.bidderId)) {
+      //   stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.BIDDER_LOCKED)
+      // }
       // Bidding with an erroneous qty is not allowed
       else if (normalizedUsersBid.requestedQty < 1) {
         stay replying BidRejectedReply(normalizedUsersBid, BidRejectionReason.WRONG_REQUESTED_QTY)
@@ -378,30 +283,30 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       goto(ClosedState) applying AuctionClosed(evt)
   }
 
-  //
-  // 	 #####  #       #######  #####  ####### ######
-  // 	#     # #       #     # #     # #       #     #
-  // 	#       #       #     # #       #       #     #
-  // 	#       #       #     #  #####  #####   #     #
-  // 	#       #       #     #       # #       #     #
-  // 	#     # #       #     # #     # #       #     #
-  // 	 #####  ####### #######  #####  ####### ######
-  //
+  /**
+    *  	 #####  #       #######  #####  ####### ######
+    *  	#     # #       #     # #     # #       #     #
+    *  	#       #       #     # #       #       #     #
+    *  	#       #       #     #  #####  #####   #     #
+    *  	#       #       #     #       # #       #     #
+    *  	#     # #       #     # #     # #       #     #
+    *  	 #####  ####### #######  #####  ####### ######
+    */
   when(ClosedState) {
     // A bid was placed on an auction
     case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_HAS_ENDED)
   }
 
-  //
-  // 	 #####  #     #  #####  ######  ####### #     # ######  ####### ######
-  // 	#     # #     # #     # #     # #       ##    # #     # #       #     #
-  // 	#       #     # #       #     # #       # #   # #     # #       #     #
-  // 	 #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
-  // 	      # #     #       # #       #       #   # # #     # #       #     #
-  // 	#     # #     # #     # #       #       #    ## #     # #       #     #
-  // 	 #####   #####   #####  #       ####### #     # ######  ####### ######
-  //
+  /**
+    *  	 #####  #     #  #####  ######  ####### #     # ######  ####### ######
+    *  	#     # #     # #     # #     # #       ##    # #     # #       #     #
+    *  	#       #     # #       #     # #       # #   # #     # #       #     #
+    *  	 #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
+    *  	      # #     #       # #       #       #   # # #     # #       #     #
+    *  	#     # #     # #     # #       #       #    ## #     # #       #     #
+    *  	 #####   #####   #####  #       ####### #     # ######  ####### ######
+    */
   when(SuspendedState) {
     case Event(ResumeAuction(auctionId, resumedBy, startsAt, endsAt, createdAt), ActiveAuction(auction)) if auction.bids.isEmpty =>
       val updatedAuction = auction.copy(suspendedAt = None, startsAt = startsAt, endsAt = endsAt, renewalCount = auction.renewalCount + 1)
@@ -445,9 +350,15 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
       stay
   }
 
-  //
-  //
-  //
+  /**
+    *   ####### ######     #    #     #  #####    ###   #######   ###   ####### #     #
+    *      #    #     #   # #   ##    # #     #    #       #       #    #     # ##    #
+    *      #    #     #  #   #  # #   # #          #       #       #    #     # # #   #
+    *      #    ######  #     # #  #  #  #####     #       #       #    #     # #  #  #
+    *      #    #   #   ####### #   # #       #    #       #       #    #     # #   # #
+    *      #    #    #  #     # #    ## #     #    #       #       #    #     # #    ##
+    *      #    #     # #     # #     #  #####    ###      #      ###   ####### #     #
+    */
   onTransition {
     case _ -> ClosedState =>
       unsubscribeUserEvents()
@@ -484,7 +395,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     case (auctionClosed: AuctionClosed, _: ActiveAuction) =>
       stateDataBefore.closeAuction(auctionClosed)
 
-    case (auctionRestarted: AuctionRestarted, ActiveAuction(auction)) =>
+    case (_: AuctionRestarted, ActiveAuction(auction)) =>
       stateDataBefore.restartAuction(auction)
 
     case _ =>
@@ -720,9 +631,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     * @param auction The auction who wants to subscribe to user actor events
     */
   def subscribeUserEvents(auction: Auction): Unit = {
-    val userActorName: String = UserActor.getActorName(auction.sellerId)
-    gSellerActorName = s"/user/$userActorName"
-    val userActor: ActorSelection = context.system.actorSelection(gSellerActorName)
+    val userActor = getUserActorSelection(auction.sellerId)(context.system)
 
     // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
     userActor ! SubscribeTransitionCallBack(self)
@@ -732,9 +641,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
 
   def unsubscribeUserEvents(): Unit = (gHasSubscribedToUserEvents, gSellerId) match {
     case (true, Some(sellerId)) =>
-      val userActorName: String = UserActor.getActorName(sellerId)
-      gSellerActorName = s"/user/$userActorName"
-      val userActor: ActorSelection = context.system.actorSelection(gSellerActorName)
+      val userActor = getUserActorSelection(sellerId)(context.system)
 
       // See https://github.com/akka/akka/blob/master/akka-actor/src/main/scala/akka/actor/FSM.scala
       userActor ! UnsubscribeTransitionCallBack(self)
@@ -763,8 +670,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     stateData.auction.copy(currentPrice = newCurrentPrice, bids = newBids ++ stateData.auction.bids)
   }
 
-  // TODO implement
-  def canBid(bidderId: UUID) = true // TODO implement
+  def canBid(bidderId: UUID) = true // TODO implement this in the websocket command handler
 
   /**
     * Get a unique timer name for a given auction
@@ -833,7 +739,7 @@ object AuctionActor {
   trait BidPlacedReply
 
   object BidPlacedReply {
-    def apply(stateData: => AuctionStateData): BidPlacedReply = stateData match {
+    def apply(stateData: => AuctionStateData) = stateData match {
       case ActiveAuction(auction) =>
         BidPlacedWithInfoReply(
           auctionId = auction.auctionId,

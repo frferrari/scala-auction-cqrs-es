@@ -1,12 +1,12 @@
-package actors.userUnicity
-
-import java.time.Instant
+package actors.userSupervisor
 
 import actors.ActorCommonsSpec
-import actors.user.UserActor
-import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
+import actors.user.UserActor.{CurrentStateReply, RegistrationRejectedReply, UserRegisteredReply}
+import actors.user.UserActorHelpers
+import actors.user.fsm.{InactiveUser, RegisteredState}
+import actors.userUnicity.UserUnicityActor
 import actors.userUnicity.UserUnicityActor.UserUnicityListReply
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.commands._
 import models.RegistrationRejectedReason
@@ -17,13 +17,14 @@ import play.api.inject.guice.GuiceApplicationBuilder
 /**
   * Created by Francois FERRARI on 24/05/2017
   */
-class UserUnicityViaUserSpec
+class UserSupervisorSpec
   extends TestKit(ActorSystem("AuctionSystem"))
     with ActorCommonsSpec
     with ImplicitSender
     with WordSpecLike
     with Matchers
-    with BeforeAndAfterAll {
+    with BeforeAndAfterAll
+    with UserActorHelpers {
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
@@ -32,21 +33,17 @@ class UserUnicityViaUserSpec
   val app = new GuiceApplicationBuilder().build()
   val injector = app.injector
   val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val userSupervisorActorRef = system.actorOf(Props(new UserSupervisor(userUnicityActorRef)), name = UserSupervisor.name)
 
-  "A USER actor" should {
+  "A User Supervisor" should {
 
     val seller1 = makeUser("user1@pluto.space", "user1", "Robert1", "John1")
     val seller2 = makeUser("user1@pluto.space", "user2", "Robert2", "John2")
     val seller3 = makeUser("user3@pluto.space", "user1", "Robert3", "John3")
     val seller4 = makeUser("user4@pluto.space", "user4", "Robert4", "John4")
 
-    val (sellerName1, sellerActor1) = (seller1.nickName, UserActor.createUserActor(seller1, userUnicityActorRef))
-    val (sellerName2, sellerActor2) = (seller2.nickName, UserActor.createUserActor(seller2, userUnicityActorRef))
-    val (sellerName3, sellerActor3) = (seller3.nickName, UserActor.createUserActor(seller3, userUnicityActorRef))
-    val (sellerName4, sellerActor4) = (seller4.nickName, UserActor.createUserActor(seller4, userUnicityActorRef))
-
-    "be able to record a user with an unused email and unused nickname (first attempt to record a user)" in {
-      sellerActor1 ! RegisterUser(seller1, Instant.now())
+    "be able to create a user with an unused email and unused nickname (first attempt to record a user)" in {
+      userSupervisorActorRef ! CreateUser(seller1)
       expectMsg(UserRegisteredReply)
     }
 
@@ -58,8 +55,15 @@ class UserUnicityViaUserSpec
       }
     }
 
+    "successfully check that the seller1's actor is in RegisteredState" in {
+      getUserActorSelection(seller1.userId) ! GetUserCurrentState
+      expectMsgPF() {
+        case (CurrentStateReply(RegisteredState, InactiveUser)) => ()
+      }
+    }
+
     "be refused to record a user with an already used email" in {
-      sellerActor2 ! RegisterUser(seller2, Instant.now())
+      userSupervisorActorRef ! CreateUser(seller2)
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.EMAIL_ALREADY_EXISTS))
     }
 
@@ -72,7 +76,7 @@ class UserUnicityViaUserSpec
     }
 
     "be refused to record a user with an already used nickname" in {
-      sellerActor3 ! RegisterUser(seller3, Instant.now())
+      userSupervisorActorRef ! CreateUser(seller3)
       expectMsg(RegistrationRejectedReply(RegistrationRejectedReason.NICKNAME_ALREADY_EXISTS))
     }
 
@@ -85,7 +89,7 @@ class UserUnicityViaUserSpec
     }
 
     "be able to record a user with an unused email and unused nickname" in {
-      sellerActor4 ! RegisterUser(seller4, Instant.now())
+      userSupervisorActorRef ! CreateUser(seller4)
       expectMsg(UserRegisteredReply)
     }
 

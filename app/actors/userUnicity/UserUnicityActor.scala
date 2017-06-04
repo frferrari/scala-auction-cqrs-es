@@ -22,7 +22,7 @@ class UserUnicityActor extends Actor with PersistentFSM[UserUnicityState, UserUn
   override def domainEventClassTag: ClassTag[UserUnicityEvent] = classTag[UserUnicityEvent]
 
   override def preStart(): Unit = {
-    Logger.info("UserUnicityActor is starting (preStart)")
+    Logger.info("UserUnicityActor is starting ...")
   }
 
   startWith(AwaitingFirstUserRecording, EmptyUserUnictyList)

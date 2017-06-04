@@ -21,7 +21,7 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
 
   def test = Action { implicit request =>
 
-    implicit val actorSystem = ActorSystem("andycotSystem")
+    implicit val actorSystem = ActorSystem("AuctionSystem")
 
     val sellerA = User(
       userId = UUID.randomUUID(),

@@ -12,7 +12,7 @@ import models.UserReason.UserReason
 sealed trait UserCommand
 
 case class RegisterUser(user: User,
-                        createdAt: Instant
+                        createdAt: Instant = Instant.now()
                        ) extends UserCommand
 
 case class ActivateUser(userId: UUID,

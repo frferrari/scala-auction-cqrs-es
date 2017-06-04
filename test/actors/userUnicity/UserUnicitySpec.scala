@@ -15,7 +15,7 @@ import play.api.inject.guice.GuiceApplicationBuilder
   * Created by Francois FERRARI on 24/05/2017
   */
 class UserUnicitySpec
-  extends TestKit(ActorSystem("UserActorSpec"))
+  extends TestKit(ActorSystem("AuctionSystem"))
     with ActorCommonsSpec
     with ImplicitSender
     with WordSpecLike

@@ -24,7 +24,7 @@ import scala.concurrent.duration._
   * Created by Francois FERRARI on 24/05/2017
   */
 class CantBidOnFixedPriceAuctionWhoseSellerIsLockedSpec
-  extends TestKit(ActorSystem("AuctionActorSpec"))
+  extends TestKit(ActorSystem("AuctionSystem"))
   with ActorCommonsSpec
   with ImplicitSender
   with WordSpecLike

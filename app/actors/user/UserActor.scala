@@ -2,14 +2,14 @@ package actors.user
 
 import java.util.UUID
 
-import actors.user.UserActor.{RegistrationRejectedReply, UserRegisteredReply}
+import actors.user.UserActor.{CurrentStateReply, RegistrationRejectedReply, UserRegisteredReply}
 import actors.user.fsm._
 import actors.userUnicity.UserUnicityActor.{UserUnicityEmailAlreadyRecordedReply, UserUnicityNickNameAlreadyRecordedReply, UserUnicityRecordedReply}
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.pattern._
 import akka.persistence.fsm.PersistentFSM
 import akka.util.Timeout
-import cqrs.commands.{ActivateUser, LockUser, RecordUserUnicity, RegisterUser}
+import cqrs.commands._
 import cqrs.events._
 import models.RegistrationRejectedReason.RegistrationRejectedReason
 import models.{RegistrationRejectedReason, User}
@@ -35,9 +35,11 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   import context.dispatcher // The ? pattern needs an execution context
 
-  startWith(IdleState, InactiveUser)
+  Logger.info(s"UserActor ${self.path} is starting ...")
 
-  when(IdleState) {
+  startWith(fsm.IdleState, InactiveUser)
+
+  when(fsm.IdleState) {
     case Event(RegisterUser(user, createdAt), _) =>
       // Query the UserUnicity actor to check if the email and nickname are free
       pipe(userUnicityActorRef ? RecordUserUnicity(user, sender())) to self
@@ -47,6 +49,7 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   when(AwaitingUserUnicityResponseState) {
     case Event(UserUnicityRecordedReply(user, theSender, createdAt), _) =>
+      Logger.info(s"UserActor RegisterUser command accepted for email ${user.emailAddress.email} and nickName ${user.nickName}")
       theSender ! UserRegisteredReply
       goto(RegisteredState) applying UserRegistered(user, createdAt)
 
@@ -87,6 +90,11 @@ class UserActor(userUnicityActorRef: ActorRef)
       goto(ActiveState)
   }
 
+  whenUnhandled {
+    case Event(GetUserCurrentState, stateData) =>
+      stay replying CurrentStateReply(stateName, stateData)
+  }
+
   /**
     *
     * @param event           The event to apply
@@ -105,7 +113,7 @@ class UserActor(userUnicityActorRef: ActorRef)
   def getSystemUserId: UUID = UUID.randomUUID()
 }
 
-object UserActor {
+object UserActor extends UserActorHelpers {
 
   case class RegistrationRejectedReply(registrationRejectedReason: RegistrationRejectedReason)
 
@@ -119,7 +127,7 @@ object UserActor {
 
   case object UserCantReceiveBidsReply
 
-  def getActorName(userId: UUID) = s"user-$userId"
+  case class CurrentStateReply(state: UserState, stateData: UserStateData)
 
   def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem): ActorRef = {
     val name = getActorName(user.userId)
