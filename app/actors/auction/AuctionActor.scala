@@ -57,15 +57,15 @@ class AuctionActor()
   //    context.system.eventStream.subscribe(self, classOf[UserUnlocked])
   //  }
 
-  /**
-    * ###   ######  #       #######
-    * #    #     # #       #
-    * #    #     # #       #
-    * #    #     # #       #####
-    * #    #     # #       #
-    * #    #     # #       #
-    * ###   ######  ####### #######
-    */
+  //
+  //    ###   ######  #       #######
+  //     #    #     # #       #
+  //     #    #     # #       #
+  //     #    #     # #       #####
+  //     #    #     # #       #
+  //     #    #     # #       #
+  //    ###   ######  ####### #######
+  //
   when(fsm.IdleState) {
 
     case Event(cmd: StartOrScheduleAuction, _) if cmd.auction.startsAt.isAfter(Instant.now()) =>
@@ -106,15 +106,15 @@ class AuctionActor()
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
   }
 
-  /**
-    * #####   #####  #     # ####### ######  #     # #       ####### ######
-    * #     # #     # #     # #       #     # #     # #       #       #     #
-    * #       #       #     # #       #     # #     # #       #       #     #
-    * #####  #       ####### #####   #     # #     # #       #####   #     #
-    * # #       #     # #       #     # #     # #       #       #     #
-    * #     # #     # #     # #       #     # #     # #       #       #     #
-    * #####   #####  #     # ####### ######   #####  ####### ####### ######
-    */
+  //
+  //   #####   #####  #     # ####### ######  #     # #       ####### ######
+  //  #     # #     # #     # #       #     # #     # #       #       #     #
+  //  #       #       #     # #       #     # #     # #       #       #     #
+  //   #####  #       ####### #####   #     # #     # #       #####   #     #
+  //        # #       #     # #       #     # #     # #       #       #     #
+  //  #     # #     # #     # #       #     # #     # #       #       #     #
+  //   #####   #####  #     # ####### ######   #####  ####### ####### ######
+  //
   when(ScheduledState) {
     case Event(cmd: StartAuction, _) =>
       subscribeUserEvents(cmd.auction)
@@ -138,15 +138,15 @@ class AuctionActor()
       goto(SuspendedState) applying AuctionSuspended(cmd.auctionId, cmd.suspendedBy, cmd.createdAt) replying AuctionSuspendedReply(cmd.reason)
   }
 
-  /**
-    * #####  #######    #    ######  ####### ####### ######
-    * #     #    #      # #   #     #    #    #       #     #
-    * #          #     #   #  #     #    #    #       #     #
-    * #####     #    #     # ######     #    #####   #     #
-    * #    #    ####### #   #      #    #       #     #
-    * #     #    #    #     # #    #     #    #       #     #
-    * #####     #    #     # #     #    #    ####### ######
-    */
+  //
+  //   #####  #######    #    ######  ####### ####### ######
+  //  #     #    #      # #   #     #    #    #       #     #
+  //  #          #     #   #  #     #    #    #       #     #
+  //   #####     #    #     # ######     #    #####   #     #
+  //        #    #    ####### #   #      #    #       #     #
+  //  #     #    #    #     # #    #     #    #       #     #
+  //   #####     #    #     # #     #    #    ####### ######
+  //
   when(StartedState) {
     // A bid was placed on an auction without bids
     case Event(PlaceBid(usersBid), ActiveAuction(auction)) if auction.takesBids && auction.bids.isEmpty =>
@@ -306,30 +306,30 @@ class AuctionActor()
       goto(ClosedState) applying AuctionClosed(cmd)
   }
 
-  /**
-    * #####  #       #######  #####  ####### ######
-    * #     # #       #     # #     # #       #     #
-    * #       #       #     # #       #       #     #
-    * #       #       #     #  #####  #####   #     #
-    * #       #       #     #       # #       #     #
-    * #     # #       #     # #     # #       #     #
-    * #####  ####### #######  #####  ####### ######
-    */
+  //
+  //   #####  #       #######  #####  ####### ######
+  //  #     # #       #     # #     # #       #     #
+  //  #       #       #     # #       #       #     #
+  //  #       #       #     #  #####  #####   #     #
+  //  #       #       #     #       # #       #     #
+  //  #     # #       #     # #     # #       #     #
+  //   #####  ####### #######  #####  ####### ######
+  //
   when(ClosedState) {
     // A bid was placed on an auction
     case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_HAS_ENDED)
   }
 
-  /**
-    * #####  #     #  #####  ######  ####### #     # ######  ####### ######
-    * #     # #     # #     # #     # #       ##    # #     # #       #     #
-    * #       #     # #       #     # #       # #   # #     # #       #     #
-    * #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
-    * # #     #       # #       #       #   # # #     # #       #     #
-    * #     # #     # #     # #       #       #    ## #     # #       #     #
-    * #####   #####   #####  #       ####### #     # ######  ####### ######
-    */
+  //
+  //   #####  #     #  #####  ######  ####### #     # ######  ####### ######
+  //  #     # #     # #     # #     # #       ##    # #     # #       #     #
+  //  #       #     # #       #     # #       # #   # #     # #       #     #
+  //   #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
+  //        # #     #       # #       #       #   # # #     # #       #     #
+  //  #     # #     # #     # #       #       #    ## #     # #       #     #
+  //   #####   #####   #####  #       ####### #     # ######  ####### ######
+  //
   when(SuspendedState) {
     case Event(ResumeAuction(auctionId, resumedBy, startsAt, endsAt, createdAt), ActiveAuction(auction)) if auction.bids.isEmpty =>
       val updatedAuction = auction.copy(suspendedAt = None, startsAt = startsAt, endsAt = endsAt, renewalCount = auction.renewalCount + 1)
@@ -373,15 +373,15 @@ class AuctionActor()
       stay
   }
 
-  /**
-    *   ####### ######     #    #     #  #####    ###   #######   ###   ####### #     #
-    *      #    #     #   # #   ##    # #     #    #       #       #    #     # ##    #
-    *      #    #     #  #   #  # #   # #          #       #       #    #     # # #   #
-    *      #    ######  #     # #  #  #  #####     #       #       #    #     # #  #  #
-    *      #    #   #   ####### #   # #       #    #       #       #    #     # #   # #
-    *      #    #    #  #     # #    ## #     #    #       #       #    #     # #    ##
-    *      #    #     # #     # #     #  #####    ###      #      ###   ####### #     #
-    */
+  //
+  //  ####### ######     #    #     #  #####    ###   #######   ###   ####### #     #
+  //     #    #     #   # #   ##    # #     #    #       #       #    #     # ##    #
+  //     #    #     #  #   #  # #   # #          #       #       #    #     # # #   #
+  //     #    ######  #     # #  #  #  #####     #       #       #    #     # #  #  #
+  //     #    #   #   ####### #   # #       #    #       #       #    #     # #   # #
+  //     #    #    #  #     # #    ## #     #    #       #       #    #     # #    ##
+  //     #    #     # #     # #     #  #####    ###      #      ###   ####### #     #
+  //
   onTransition {
     case _ -> ClosedState =>
       unsubscribeUserEvents()
