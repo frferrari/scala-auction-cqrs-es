@@ -5,12 +5,13 @@ import java.util.UUID
 
 import actors.ActorCommonsSpec
 import actors.auction.AuctionActor.{AuctionStartedReply, BidPlacedReply, BidRejectedReply}
+import actors.auctionSupervisor.AuctionSupervisor
 import actors.user.UserActor.UserRegisteredReply
 import actors.user.UserActorHelpers
 import actors.userSupervisor.UserSupervisor
 import actors.userUnicity.UserUnicityActor
 import actors.userUnicity.UserUnicityActor.UserUnicityListReply
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Props}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
 import cqrs.commands._
@@ -31,7 +32,8 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     with WordSpecLike
     with Matchers
     with BeforeAndAfterAll
-    with UserActorHelpers {
+    with UserActorHelpers
+    with AuctionActorHelpers {
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
@@ -41,6 +43,7 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
   val injector = app.injector
   val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
   val userSupervisorActorRef = system.actorOf(Props(new UserSupervisor(userUnicityActorRef)), name = UserSupervisor.name)
+  val auctionSupervisorActorRef = system.actorOf(Props(new AuctionSupervisor()), name = AuctionSupervisor.name)
 
   val seller = makeUser("contact@pluto.space", "hhgg", "Robert", "John")
   val auction = makeAuction(
@@ -52,8 +55,6 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     hasTimeExtension = false,
     seller.userId
   )
-
-  val auctionActor = AuctionActor.createAuctionActor(auction)
 
   "An AUCTION" should {
 
@@ -69,8 +70,8 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
       expectMsg(UserRegisteredReply)
     }
 
-    "successfully start an Auction" in {
-      auctionActor ! StartAuction(auction)
+    "successfully create an auction" in {
+      auctionSupervisorActorRef ! CreateAuction(auction)
       expectMsg(AuctionStartedReply)
     }
 
@@ -80,7 +81,7 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     }
 
     "reject a bid on an auction whose seller is Locked" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+      getAuctionActorSelection(auction.auctionId) ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
       expectMsgPF() {
         case BidRejectedReply(_, BidRejectionReason.SELLER_LOCKED) => ()
       }
@@ -92,7 +93,7 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     }
 
     "accept a bid on an auction whose seller is NOT Locked" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+      getAuctionActorSelection(auction.auctionId) ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
       expectMsg(BidPlacedReply)
     }
 
@@ -102,10 +103,14 @@ class CantBidOnAuctionWhoseSellerIsLockedSpec
     }
 
     "reject a bid on an auction whose seller is Locked again" in {
-      auctionActor ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
+      getAuctionActorSelection(auction.auctionId) ! PlaceBid(UsersBid(UUID.randomUUID(), bidderAName, bidderAUUID, 1, 1.00, Instant.now()))
       expectMsgPF() {
         case BidRejectedReply(_, BidRejectionReason.SELLER_LOCKED) => ()
       }
+
+      // Before stopping the auction actor should send an Unsubscribe msg to the user actor
+      getAuctionActorSelection(auction.auctionId) ! PoisonPill
+      expectNoMsg(2.seconds)
     }
   }
 }

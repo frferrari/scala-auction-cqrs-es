@@ -5,11 +5,17 @@ import java.time.Instant
 import actors.ActorCommonsSpec
 import actors.auction.AuctionActor._
 import actors.auction.fsm.{ActiveAuction, ClosedState, FinishedAuction, StartedState}
-import akka.actor.ActorSystem
+import actors.auctionSupervisor.AuctionSupervisor
+import actors.user.UserActor.UserRegisteredReply
+import actors.userSupervisor.UserSupervisor
+import actors.userUnicity.UserUnicityActor
+import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit}
 import cqrs.UsersBid
-import cqrs.commands.{GetCurrentState, PlaceBid, ScheduleAuction}
+import cqrs.commands._
 import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
+import play.api.inject.BindingKey
+import play.api.inject.guice.GuiceApplicationBuilder
 
 import scala.concurrent.duration._
 
@@ -21,39 +27,56 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionSystem"))
   with ImplicitSender
   with WordSpecLike
   with Matchers
-  with BeforeAndAfterAll {
+  with BeforeAndAfterAll
+  with AuctionActorHelpers {
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
   }
 
+  val app = new GuiceApplicationBuilder().build()
+  val injector = app.injector
+  val userUnicityActorRef = injector.instanceOf(BindingKey(classOf[ActorRef]).qualifiedWith(UserUnicityActor.name))
+  val userSupervisorActorRef = system.actorOf(Props(new UserSupervisor(userUnicityActorRef)), name = UserSupervisor.name)
+  val auctionSupervisorActorRef = system.actorOf(Props(new AuctionSupervisor()), name = AuctionSupervisor.name)
+
+  val seller = makeUser("contact@pluto.space", "hhgg", "Robert", "John")
+  val bidderA = makeUser("bidderA@pluto.space", "bidderA", "BidderA", "John")
+
+  val auction = makeAuction(
+    startPrice = 0.10,
+    bidIncrement = 0.10,
+    startsAt = Instant.now(),
+    lastsSeconds = 20,
+    hasAutomaticRenewal = false,
+    hasTimeExtension = false,
+    seller.userId
+  )
+
   "An AUCTION W/O reserve price W/1 bidder" should {
 
-    val auction = makeAuction(
-      startPrice = 0.10,
-      bidIncrement = 0.10,
-      startsAt = Instant.now(),
-      lastsSeconds = 20,
-      hasAutomaticRenewal = false,
-      hasTimeExtension = false,
-      sellerAUUID
-    )
-    val auctionActor = AuctionActor.createAuctionActor(auction)
+    "successfully create a User (Seller)" in {
+      userSupervisorActorRef ! CreateUser(seller)
+      expectMsg(UserRegisteredReply)
+    }
 
-    "schedule and start an auction" in {
-      auctionActor ! ScheduleAuction(auction)
-      expectMsg(AuctionScheduledReply)
+    "successfully create a User (bidderA)" in {
+      userSupervisorActorRef ! CreateUser(bidderA)
+      expectMsg(UserRegisteredReply)
+    }
 
-      expectNoMsg(10.seconds) // Let the auction start
+    "successfully create an auction in StartedState" in {
+      auctionSupervisorActorRef ! CreateAuction(auction)
+      expectMsg(AuctionStartedReply)
     }
 
     "accept a bid from bidderA" in {
-      auctionActor ! PlaceBid(UsersBid(auction.auctionId, bidderAName, bidderAUUID, 1, 4.00, Instant.now()))
+      getAuctionActorSelection(auction.auctionId) ! PlaceBid(UsersBid(auction.auctionId, bidderA.nickName, bidderA.userId, 1, 4.00, Instant.now()))
       expectMsg(BidPlacedReply)
 
-      auctionActor ! GetCurrentState
+      getAuctionActorSelection(auction.auctionId) ! GetCurrentState
       val expectedBidEssentials = List(
-        (bidderAUUID, 1, auction.startPrice, 4.0, true, false, false)
+        (bidderA.userId, 1, auction.startPrice, 4.0, true, false, false)
       )
       expectMsgPF() {
         case CurrentStateReply(StartedState, ActiveAuction(activeAuction))
@@ -61,7 +84,7 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionSystem"))
             activeAuction.bids.length == 1 &&
             activeAuction.bids.head.bidPrice == activeAuction.startPrice &&
             activeAuction.bids.head.bidMaxPrice == 4.0 &&
-            activeAuction.bids.head.bidderId == bidderAUUID &&
+            activeAuction.bids.head.bidderId == bidderA.userId &&
             bidEssentials(activeAuction.bids) == expectedBidEssentials
         => ()
       }
@@ -70,7 +93,7 @@ class AuctionActorSpec3() extends TestKit(ActorSystem("AuctionSystem"))
     "be in CLOSED state when it has reached it's end time with bidderA as a winner" in {
       expectNoMsg(secondsToWaitForAuctionEnd(auction).seconds)
 
-      auctionActor ! GetCurrentState
+      getAuctionActorSelection(auction.auctionId) ! GetCurrentState
       expectMsgPF() {
         case CurrentStateReply(ClosedState, FinishedAuction(finishedAuction))
           if finishedAuction.bids.length == 1 &&

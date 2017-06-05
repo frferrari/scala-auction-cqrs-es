@@ -83,7 +83,9 @@ class AuctionActor()
       // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
       subscribeUserEvents(cmd.auction)
 
-      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply
+      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply andThen {
+        case ActiveAuction(auction) => startCloseTimer(auction)
+      }
 
     case Event(cmd: StartAuction, _) =>
       gSellerId = Some(cmd.auction.sellerId)
@@ -92,7 +94,9 @@ class AuctionActor()
       // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
       subscribeUserEvents(cmd.auction)
 
-      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply
+      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply andThen {
+        case ActiveAuction(auction) => startCloseTimer(auction)
+      }
 
     case Event(cmd: ScheduleAuction, _) =>
       gSellerId = Some(cmd.auction.sellerId)
@@ -591,7 +595,7 @@ class AuctionActor()
 
     stateDataBefore.auction.stock - bidPlaced.usersBid.requestedQty match {
       case remainingStock if remainingStock == 0 =>
-        Logger.info(s"AuctionActor ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, no remaining stock")
+        Logger.info(s"AuctionActor ${self.path.toStringWithoutAddress} sold for a qty of ${bidPlaced.usersBid.requestedQty}, no remaining stock")
         val bid = Bid(
           bidderId = bidPlaced.usersBid.bidderId,
           bidderName = bidPlaced.usersBid.bidderName,

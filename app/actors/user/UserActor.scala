@@ -35,7 +35,7 @@ class UserActor(userUnicityActorRef: ActorRef)
 
   import context.dispatcher // The ? pattern needs an execution context
 
-  Logger.info(s"UserActor ${self.path} is starting ...")
+  Logger.info(s"UserActor ${self.path.toStringWithoutAddress} is starting ...")
 
   startWith(fsm.IdleState, InactiveUser)
 

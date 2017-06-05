@@ -17,7 +17,12 @@ trait ActorCommonsSpec {
 
   def instantNow: Instant = Instant.now()
 
-  def secondsToWaitForAuctionEnd(auction: Auction, delay: Long = 5): Long = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond match {
+  def secondsToWaitForAuctionStart(auction: Auction, delay: Long = 1): Long = auction.startsAt.getEpochSecond - Instant.now().getEpochSecond match {
+    case stw if stw > 0 => stw + delay
+    case stx => delay
+  }
+
+  def secondsToWaitForAuctionEnd(auction: Auction, delay: Long = 1): Long = auction.endsAt.getEpochSecond - Instant.now().getEpochSecond match {
     case stw if stw > 0 => stw + delay
     case stx => delay
   }
@@ -35,12 +40,16 @@ trait ActorCommonsSpec {
                  ) =
     Auction(
       auctionId = UUID.randomUUID(),
-      None, None, None,
+      clonedFromAuctionId = None,
+      clonedToAuctionId = None,
+      cloneParameters = None,
       sellerId = sellerId,
       typeId = UUID.randomUUID(),
       listedTimeId = UUID.randomUUID(),
       AuctionType.AUCTION,
-      "Eiffel tower", "", 2010,
+      title = "Eiffel tower",
+      description = "",
+      year = 2010,
       areaId = UUID.randomUUID(),
       topicIds = Nil,
       options = Nil,
@@ -52,15 +61,15 @@ trait ActorCommonsSpec {
       reservePrice = reservePrice,
       stock = 1,
       originalStock = 1,
-      startsAt,
-      None,
-      startsAt.plusSeconds(lastsSeconds),
+      startsAt = startsAt,
+      suspendedAt = None,
+      endsAt = startsAt.plusSeconds(lastsSeconds),
       hasAutomaticRenewal = hasAutomaticRenewal,
       hasTimeExtension = hasTimeExtension,
       renewalCount = 0,
       watchersCount = 0,
       visitorsCount = 0,
-      "EUR",
+      currency = "EUR",
       slug = None,
       pictures = Nil,
       closedBy = None,
@@ -113,7 +122,7 @@ trait ActorCommonsSpec {
       closedBy = None,
       closedAt = None,
       isSold = false,
-      instantNow
+      createdAt = instantNow
     )
 
   def makeUser(email: String, nickName: String, lastName: String, firstName: String) =
