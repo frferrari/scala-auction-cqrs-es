@@ -12,7 +12,10 @@ import models.AuctionReason.AuctionReason
   */
 sealed trait AuctionCommand
 
-case class StartOrScheduleAuction(auction: Auction) extends AuctionCommand
+case class StartOrScheduleAuction(auction: Auction,
+                                  acknowledge: Boolean = true,
+                                  createdAt: Instant = Instant.now()
+                                 ) extends AuctionCommand
 
 case class StartAuction(auction: Auction) extends AuctionCommand
 
@@ -72,5 +75,10 @@ case class CloneAuction(parentAuction: Auction,
 object CloneAuction {
   def apply(parentAucton: Auction, stock: Int, createdAt: Instant) = new CloneAuction(parentAucton, stock, createdAt, createdAt)
 }
+
+case class UpdateClonedTo(parentAuctionId: UUID,
+                          clonedToAuctionId: UUID,
+                          createdAt: Instant = Instant.now()
+                         ) extends AuctionCommand
 
 case object GetCurrentState extends AuctionCommand

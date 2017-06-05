@@ -126,3 +126,8 @@ case class WatchRejected(userId: UUID,
                          reason: AuctionReason,
                          watchedAt: Instant
                         ) extends AuctionEvent
+
+case class ClonedToUpdated(parentAuctionId: UUID,
+                           clonedToAuctionId: UUID,
+                           createdAt: Instant
+                          ) extends AuctionEvent

@@ -65,7 +65,7 @@ class FixedPriceAuctionActorSpec3() extends TestKit(ActorSystem("AuctionSystem")
       expectMsg(UserRegisteredReply)
     }
 
-    "successfully create an auction in StartedState" in {
+    "successfully create an auction in ScheduledState" in {
       auctionSupervisorActorRef ! CreateAuction(auction)
       expectMsg(AuctionScheduledReply)
     }

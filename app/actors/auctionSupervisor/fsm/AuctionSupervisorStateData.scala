@@ -16,6 +16,7 @@ import scala.concurrent.duration._
   */
 sealed trait AuctionSupervisorStateData {
   def createAuction(auction: Auction, theSender: ActorRef, context: ActorContext)(implicit ec: ExecutionContext): AuctionSupervisorStateData
+  def createAuctionWithoutReply(auction: Auction, theSender: ActorRef, context: ActorContext)(implicit ec: ExecutionContext): AuctionSupervisorStateData
 }
 
 case object ActiveAuctionSupervisor extends AuctionSupervisorStateData {
@@ -25,7 +26,14 @@ case object ActiveAuctionSupervisor extends AuctionSupervisorStateData {
   def createAuction(auction: Auction, theSender: ActorRef, context: ActorContext)(implicit ec: ExecutionContext): AuctionSupervisorStateData = {
     val actorName = AuctionActor.getAuctionActorName(auction.auctionId)
     Logger.info(s"AuctionSupervisor is creating an AuctionActor actorName=$actorName sellerId=${auction.sellerId}")
-    pipe(context.actorOf(Props(new AuctionActor()), name = actorName) ? StartOrScheduleAuction(auction)) to theSender
+    pipe(context.actorOf(Props(new AuctionActor()), name = actorName) ? StartOrScheduleAuction(auction, true)) to theSender
+    this
+  }
+
+  def createAuctionWithoutReply(auction: Auction, theSender: ActorRef, context: ActorContext)(implicit ec: ExecutionContext): AuctionSupervisorStateData = {
+    val actorName = AuctionActor.getAuctionActorName(auction.auctionId)
+    Logger.info(s"AuctionSupervisor is creating an AuctionActor actorName=$actorName sellerId=${auction.sellerId}")
+    context.actorOf(Props(new AuctionActor()), name = actorName) ! StartOrScheduleAuction(auction, false)
     this
   }
 }

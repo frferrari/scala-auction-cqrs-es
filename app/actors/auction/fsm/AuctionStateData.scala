@@ -3,9 +3,8 @@ package actors.auction.fsm
 import java.time.Instant
 import java.util.UUID
 
-import cqrs.events.{AuctionClosed, AuctionRestarted}
+import cqrs.events.AuctionClosed
 import models.{Auction, Bid}
-import play.api.Logger
 
 /**
   * Created by Francois FERRARI on 13/05/2017
@@ -20,6 +19,8 @@ sealed trait AuctionStateData {
   def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None): AuctionStateData
 
   def restartAuction(auction: Auction): AuctionStateData
+
+  def updateClonedTo(parentAuctionId: UUID, clonedToAuctionId: UUID): AuctionStateData
 }
 
 case object InactiveAuction extends AuctionStateData {
@@ -32,6 +33,8 @@ case object InactiveAuction extends AuctionStateData {
   def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 
   def restartAuction(auction: Auction) = this
+
+  def updateClonedTo(parentAuctionId: UUID, clonedToAuctionId: UUID) = this
 }
 
 case class ActiveAuction(auction: Auction) extends AuctionStateData {
@@ -83,6 +86,8 @@ case class ActiveAuction(auction: Auction) extends AuctionStateData {
       endsAt = auction.endsAt.plusSeconds(auction.endsAt.getEpochSecond - auction.startsAt.getEpochSecond)
     )
   )
+
+  def updateClonedTo(parentAuctionId: UUID, clonedToAuctionId: UUID) = this
 }
 
 case class FinishedAuction(auction: Auction) extends AuctionStateData {
@@ -95,6 +100,10 @@ case class FinishedAuction(auction: Auction) extends AuctionStateData {
   def placeBids(bids: Seq[Bid], isSold: Boolean, updatedEndsAt: Instant, updatedCurrentPrice: BigDecimal, updatedStock: Int, updatedOriginalStock: Int, updatedClosedBy: Option[UUID] = None) = this
 
   def restartAuction(auction: Auction) = this
+
+  def updateClonedTo(parentAuctionId: UUID, clonedToAuctionId: UUID) = FinishedAuction(
+    auction.copy(clonedToAuctionId = Some(clonedToAuctionId))
+  )
 }
 
 //case class AuctionStateData(auctionId: UUID,
@@ -143,6 +152,6 @@ case class FinishedAuction(auction: Auction) extends AuctionStateData {
 //                            suspendedAt: Boolean,
 //                            slug: String,
 //                            pictures: Seq[UUID],
-//                            bids: Seq[String], // TODO Create the Bid class
-//                            // ticker_ref: ... // TODO Store the ticker handler here
+//                            bids: Seq[String],
+//                            // ticker_ref: ...
 //                           )

@@ -72,8 +72,14 @@ class AuctionActor()
       gSellerId = Some(cmd.auction.sellerId)
       gSellerActorName = getUserActorNameWithPath(cmd.auction.sellerId)
 
-      goto(ScheduledState) applying AuctionScheduled(cmd.auction) replying AuctionScheduledReply andThen {
-        case ActiveAuction(auction) => startScheduleTimer(auction)
+      if (cmd.acknowledge) {
+        goto(ScheduledState) applying AuctionScheduled(cmd.auction) replying AuctionScheduledReply andThen {
+          case ActiveAuction(auction) => startScheduleTimer(auction)
+        }
+      } else {
+        goto(ScheduledState) applying AuctionScheduled(cmd.auction) andThen {
+          case ActiveAuction(auction) => startScheduleTimer(auction)
+        }
       }
 
     case Event(cmd: StartOrScheduleAuction, _) =>
@@ -83,8 +89,14 @@ class AuctionActor()
       // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
       subscribeUserEvents(cmd.auction)
 
-      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply andThen {
-        case ActiveAuction(auction) => startCloseTimer(auction)
+      if (cmd.acknowledge) {
+        goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply andThen {
+          case ActiveAuction(auction) => startCloseTimer(auction)
+        }
+      } else {
+        goto(StartedState) applying AuctionStarted(cmd.auction) andThen {
+          case ActiveAuction(auction) => startCloseTimer(auction)
+        }
       }
 
     case Event(cmd: StartAuction, _) =>
@@ -286,8 +298,7 @@ class AuctionActor()
         auction.stock - normalizedUsersBid.requestedQty match {
           case remainingStock if remainingStock > 0 =>
             goto(ClosedState) applying BidPlaced(normalizedUsersBid) replying BidPlacedReply andThen {
-              case ActiveAuction(updatedAuction) =>
-                // TODO Clone the auction
+              case FinishedAuction(updatedAuction) =>
                 context.parent ! CloneAuction(updatedAuction, remainingStock, Instant.now())
             }
 
@@ -323,6 +334,9 @@ class AuctionActor()
     // A bid was placed on an auction
     case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_HAS_ENDED)
+
+    case Event(UpdateClonedTo(parentAuctionId, clonedToAuctionId, createdAt), _) =>
+      stay applying ClonedToUpdated(parentAuctionId, clonedToAuctionId, createdAt)
   }
 
   //
@@ -425,6 +439,9 @@ class AuctionActor()
     case (_: AuctionRestarted, ActiveAuction(auction)) =>
       stateDataBefore.restartAuction(auction)
 
+    case (clonedToUpdated: ClonedToUpdated, finishedAuction@FinishedAuction(auction)) =>
+      stateDataBefore.updateClonedTo(clonedToUpdated.parentAuctionId, clonedToUpdated.clonedToAuctionId)
+
     case _ =>
       // Unhandled case
       stateDataBefore
@@ -495,7 +512,7 @@ class AuctionActor()
       /**
         * The current highest bidder wants to raise his max bid price.
         *
-        * If the users bid price is >= auction's reserve price and it's the first time we exceed the reserve price
+        * If the user's bid price is >= auction's reserve price and it's the first time we exceed the reserve price
         * then the auction's current price is raised to reach the value of the auction's reserve price
         * and the new bid is visible.
         */
@@ -631,7 +648,7 @@ class AuctionActor()
           timeExtended = false,
           createdAt = bidPlaced.usersBid.createdAt
         )
-        /* TODO Handle duplication via closeParameters
+        /* TODO Handle duplication via cloneParameters
           %FsmAuctionData{fsm_data | 	closed_by: nil,
                                       original_stock: event.requested_qty,
                                       stock: 0,

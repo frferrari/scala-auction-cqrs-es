@@ -12,5 +12,6 @@ sealed trait AuctionSupervisorEvent
 
 case class AuctionCreated(auction: Auction,
                           theSender: ActorRef,
+                          acknowledge: Boolean,
                           createdAt: Instant
                          ) extends AuctionSupervisorEvent

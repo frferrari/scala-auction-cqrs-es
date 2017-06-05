@@ -22,4 +22,4 @@
 | No       | No      | FixedPriceAuctionActorSpec1    | Closed and not sold                                                            |
 | Yes      | No      | FixedPriceAuctionActorSpec2    | Restarted and not sold                                                         |
 | -        | A       | FixedPriceAuctionActorSpec3    | Closed and sold for the total stock available                                  |
-| -        | A       | FixedPriceAuctionActorSpec???  | Closed and sold for the requested qty, cloned for the remaining stock          |
+| -        | A       | FixedPriceAuctionActorSpec4    | Closed and sold for the requested qty, cloned for the remaining stock          |
