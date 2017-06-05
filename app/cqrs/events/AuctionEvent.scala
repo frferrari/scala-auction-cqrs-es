@@ -17,7 +17,7 @@ case class AuctionStarted(auction: Auction) extends AuctionEvent
 
 case class AuctionScheduled(auction: Auction) extends AuctionEvent
 
-case class AuctionCreated(auction: Auction) extends AuctionEvent
+// case class AuctionCreated(auction: Auction) extends AuctionEvent
 
 case class AuctionClosed(auctionId: UUID,
                          closedBy: UUID,

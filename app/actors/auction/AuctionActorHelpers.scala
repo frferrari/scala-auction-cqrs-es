@@ -2,7 +2,7 @@ package actors.auction
 
 import java.util.UUID
 
-import akka.actor.{ActorContext, ActorSelection}
+import akka.actor.{ActorSelection, ActorSystem}
 
 /**
   * Created by Francois FERRARI on 04/06/2017
@@ -18,12 +18,12 @@ trait AuctionActorHelpers {
   }
 
   /**
-    * Returns an ActorSelection corresponding to the userId actor
-    * @param userId The auction's UUID
-    * @param context A supervisor context
+    * Returns an ActorSelection corresponding to the auctionId actor
+    * @param auctionId The auction's UUID
+    * @param system An actor system
     * @return
     */
-  def getAuctionActorSelection(userId: UUID)(implicit context: ActorContext): ActorSelection = {
-    context.system.actorSelection(getAuctionActorNameWithPath(userId))
+  def getAuctionActorSelection(auctionId: UUID)(implicit system: ActorSystem): ActorSelection = {
+    system.actorSelection(getAuctionActorNameWithPath(auctionId))
   }
 }

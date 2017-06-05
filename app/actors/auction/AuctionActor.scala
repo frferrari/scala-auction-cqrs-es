@@ -62,20 +62,38 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     * 	  ###   ######  ####### #######
     */
   when(fsm.IdleState) {
-    case Event(evt: StartAuction, _) =>
-      gSellerId = Some(evt.auction.sellerId)
-      gSellerActorName = getUserActorNameWithPath(evt.auction.sellerId)
+
+    case Event(cmd: StartOrScheduleAuction, _) if cmd.auction.startsAt.isAfter(Instant.now()) =>
+      gSellerId = Some(cmd.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(cmd.auction.sellerId)
+
+      goto(ScheduledState) applying AuctionScheduled(cmd.auction) replying AuctionScheduledReply andThen {
+        case ActiveAuction(auction) => startScheduleTimer(auction)
+      }
+
+    case Event(cmd: StartOrScheduleAuction, _) =>
+      gSellerId = Some(cmd.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(cmd.auction.sellerId)
 
       // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
-      subscribeUserEvents(evt.auction)
+      subscribeUserEvents(cmd.auction)
 
-      goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply
+      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply
 
-    case Event(evt: ScheduleAuction, _) =>
-      gSellerId = Some(evt.auction.sellerId)
-      gSellerActorName = getUserActorNameWithPath(evt.auction.sellerId)
+    case Event(cmd: StartAuction, _) =>
+      gSellerId = Some(cmd.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(cmd.auction.sellerId)
 
-      goto(ScheduledState) applying AuctionScheduled(evt.auction) replying AuctionScheduledReply andThen {
+      // Subscribe to the Seller actor transitions (Handling of the Locked/Unlocked to allow/forbid buyer's to bid when Locked)
+      subscribeUserEvents(cmd.auction)
+
+      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply
+
+    case Event(cmd: ScheduleAuction, _) =>
+      gSellerId = Some(cmd.auction.sellerId)
+      gSellerActorName = getUserActorNameWithPath(cmd.auction.sellerId)
+
+      goto(ScheduledState) applying AuctionScheduled(cmd.auction) replying AuctionScheduledReply andThen {
         case ActiveAuction(auction) => startScheduleTimer(auction)
       }
 
@@ -93,26 +111,26 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
     *  	 #####   #####  #     # ####### ######   #####  ####### ####### ######
     */
   when(ScheduledState) {
-    case Event(evt: StartAuction, _) =>
-      subscribeUserEvents(evt.auction)
-      goto(StartedState) applying AuctionStarted(evt.auction) replying AuctionStartedReply andThen {
+    case Event(cmd: StartAuction, _) =>
+      subscribeUserEvents(cmd.auction)
+      goto(StartedState) applying AuctionStarted(cmd.auction) replying AuctionStartedReply andThen {
         case ActiveAuction(auction) => startCloseTimer(auction)
       }
 
-    case Event(evt: StartAuctionByTimer, _) =>
-      subscribeUserEvents(evt.auction)
-      goto(StartedState) applying AuctionStarted(evt.auction) andThen {
+    case Event(cmd: StartAuctionByTimer, _) =>
+      subscribeUserEvents(cmd.auction)
+      goto(StartedState) applying AuctionStarted(cmd.auction) andThen {
         case ActiveAuction(auction) => startCloseTimer(auction)
       }
 
     case Event(PlaceBid(usersBid), _) =>
       stay replying BidRejectedReply(usersBid, BidRejectionReason.AUCTION_NOT_YET_STARTED)
 
-    case Event(evt: CloseAuction, _) =>
-      goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
+    case Event(cmd: CloseAuction, _) =>
+      goto(ClosedState) applying AuctionClosed(cmd) replying AuctionClosedReply(cmd.reason)
 
-    case Event(evt: SuspendAuction, _) =>
-      goto(SuspendedState) applying AuctionSuspended(evt.auctionId, evt.suspendedBy, evt.createdAt) replying AuctionSuspendedReply(evt.reason)
+    case Event(cmd: SuspendAuction, _) =>
+      goto(SuspendedState) applying AuctionSuspended(cmd.auctionId, cmd.suspendedBy, cmd.createdAt) replying AuctionSuspendedReply(cmd.reason)
   }
 
   /**
@@ -269,18 +287,18 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
         }
       }
 
-    case Event(evt: CloseAuction, ActiveAuction(_)) =>
-      goto(ClosedState) applying AuctionClosed(evt) replying AuctionClosedReply(evt.reason)
+    case Event(cmd: CloseAuction, ActiveAuction(_)) =>
+      goto(ClosedState) applying AuctionClosed(cmd) replying AuctionClosedReply(cmd.reason)
 
-    case Event(evt: CloseAuctionByTimer, ActiveAuction(auction)) if auction.bids.isEmpty && auction.hasAutomaticRenewal =>
+    case Event(cmd: CloseAuctionByTimer, ActiveAuction(auction)) if auction.bids.isEmpty && auction.hasAutomaticRenewal =>
       // An auction without bid and with automatic renewal needs to be restarted
-      stay applying AuctionRestarted(evt.auctionId, /* TODO restartedBy */ UUID.randomUUID(), AuctionReason.RESTARTED_BY_TIMER, evt.createdAt) andThen {
+      stay applying AuctionRestarted(cmd.auctionId, /* TODO restartedBy */ UUID.randomUUID(), AuctionReason.RESTARTED_BY_TIMER, cmd.createdAt) andThen {
         case ActiveAuction(restartedAuction) => startCloseTimer(restartedAuction)
       }
 
-    case Event(evt: CloseAuctionByTimer, ActiveAuction(auction)) =>
+    case Event(cmd: CloseAuctionByTimer, ActiveAuction(auction)) =>
       // TODO Check if the seller is Locked and determine what to do when at least one bid is placed (reject bid ?)
-      goto(ClosedState) applying AuctionClosed(evt)
+      goto(ClosedState) applying AuctionClosed(cmd)
   }
 
   /**

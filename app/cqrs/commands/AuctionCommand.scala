@@ -12,7 +12,7 @@ import models.AuctionReason.AuctionReason
   */
 sealed trait AuctionCommand
 
-case class CreateAuction(auction: Auction) extends AuctionCommand
+case class StartOrScheduleAuction(auction: Auction) extends AuctionCommand
 
 case class StartAuction(auction: Auction) extends AuctionCommand
 
