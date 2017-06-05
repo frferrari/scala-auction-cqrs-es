@@ -23,7 +23,7 @@ case object ActiveAuctionSupervisor extends AuctionSupervisorStateData {
   implicit val timeout = Timeout(3.seconds)
 
   def createAuction(auction: Auction, theSender: ActorRef, context: ActorContext)(implicit ec: ExecutionContext): AuctionSupervisorStateData = {
-    val actorName = AuctionActor.getActorName(auction.auctionId)
+    val actorName = AuctionActor.getAuctionActorName(auction.auctionId)
     Logger.info(s"AuctionSupervisor is creating an AuctionActor actorName=$actorName sellerId=${auction.sellerId}")
     pipe(context.actorOf(Props(new AuctionActor()), name = actorName) ? StartOrScheduleAuction(auction)) to theSender
     this

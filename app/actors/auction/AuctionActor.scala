@@ -24,7 +24,12 @@ import scala.reflect._
 /**
   * Created by Francois FERRARI on 13/05/2017
   */
-class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent] with UserActorHelpers {
+class AuctionActor()
+  extends Actor
+    with PersistentFSM[AuctionState, AuctionStateData, AuctionEvent]
+    with AuctionActorHelpers
+    with UserActorHelpers {
+
   val msToExtend = 5000
 
   /**
@@ -53,13 +58,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   //  }
 
   /**
-    * 	  ###   ######  #       #######
-    * 	   #    #     # #       #
-    * 	   #    #     # #       #
-    * 	   #    #     # #       #####
-    * 	   #    #     # #       #
-    * 	   #    #     # #       #
-    * 	  ###   ######  ####### #######
+    * ###   ######  #       #######
+    * #    #     # #       #
+    * #    #     # #       #
+    * #    #     # #       #####
+    * #    #     # #       #
+    * #    #     # #       #
+    * ###   ######  ####### #######
     */
   when(fsm.IdleState) {
 
@@ -102,13 +107,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   }
 
   /**
-    *  	 #####   #####  #     # ####### ######  #     # #       ####### ######
-    *  	#     # #     # #     # #       #     # #     # #       #       #     #
-    *  	#       #       #     # #       #     # #     # #       #       #     #
-    *  	 #####  #       ####### #####   #     # #     # #       #####   #     #
-    *  	      # #       #     # #       #     # #     # #       #       #     #
-    *  	#     # #     # #     # #       #     # #     # #       #       #     #
-    *  	 #####   #####  #     # ####### ######   #####  ####### ####### ######
+    * #####   #####  #     # ####### ######  #     # #       ####### ######
+    * #     # #     # #     # #       #     # #     # #       #       #     #
+    * #       #       #     # #       #     # #     # #       #       #     #
+    * #####  #       ####### #####   #     # #     # #       #####   #     #
+    * # #       #     # #       #     # #     # #       #       #     #
+    * #     # #     # #     # #       #     # #     # #       #       #     #
+    * #####   #####  #     # ####### ######   #####  ####### ####### ######
     */
   when(ScheduledState) {
     case Event(cmd: StartAuction, _) =>
@@ -134,13 +139,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   }
 
   /**
-    *  	 #####  #######    #    ######  ####### ####### ######
-    * 	#     #    #      # #   #     #    #    #       #     #
-    *  	#          #     #   #  #     #    #    #       #     #
-    *  	 #####     #    #     # ######     #    #####   #     #
-    *  	      #    #    ####### #   #      #    #       #     #
-    *  	#     #    #    #     # #    #     #    #       #     #
-    *  	 #####     #    #     # #     #    #    ####### ######
+    * #####  #######    #    ######  ####### ####### ######
+    * #     #    #      # #   #     #    #    #       #     #
+    * #          #     #   #  #     #    #    #       #     #
+    * #####     #    #     # ######     #    #####   #     #
+    * #    #    ####### #   #      #    #       #     #
+    * #     #    #    #     # #    #     #    #       #     #
+    * #####     #    #     # #     #    #    ####### ######
     */
   when(StartedState) {
     // A bid was placed on an auction without bids
@@ -302,13 +307,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   }
 
   /**
-    *  	 #####  #       #######  #####  ####### ######
-    *  	#     # #       #     # #     # #       #     #
-    *  	#       #       #     # #       #       #     #
-    *  	#       #       #     #  #####  #####   #     #
-    *  	#       #       #     #       # #       #     #
-    *  	#     # #       #     # #     # #       #     #
-    *  	 #####  ####### #######  #####  ####### ######
+    * #####  #       #######  #####  ####### ######
+    * #     # #       #     # #     # #       #     #
+    * #       #       #     # #       #       #     #
+    * #       #       #     #  #####  #####   #     #
+    * #       #       #     #       # #       #     #
+    * #     # #       #     # #     # #       #     #
+    * #####  ####### #######  #####  ####### ######
     */
   when(ClosedState) {
     // A bid was placed on an auction
@@ -317,13 +322,13 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   }
 
   /**
-    *  	 #####  #     #  #####  ######  ####### #     # ######  ####### ######
-    *  	#     # #     # #     # #     # #       ##    # #     # #       #     #
-    *  	#       #     # #       #     # #       # #   # #     # #       #     #
-    *  	 #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
-    *  	      # #     #       # #       #       #   # # #     # #       #     #
-    *  	#     # #     # #     # #       #       #    ## #     # #       #     #
-    *  	 #####   #####   #####  #       ####### #     # ######  ####### ######
+    * #####  #     #  #####  ######  ####### #     # ######  ####### ######
+    * #     # #     # #     # #     # #       ##    # #     # #       #     #
+    * #       #     # #       #     # #       # #   # #     # #       #     #
+    * #####  #     #  #####  ######  #####   #  #  # #     # #####   #     #
+    * # #     #       # #       #       #   # # #     # #       #     #
+    * #     # #     # #     # #       #       #    ## #     # #       #     #
+    * #####   #####   #####  #       ####### #     # ######  ####### ######
     */
   when(SuspendedState) {
     case Event(ResumeAuction(auctionId, resumedBy, startsAt, endsAt, createdAt), ActiveAuction(auction)) if auction.bids.isEmpty =>
@@ -744,7 +749,7 @@ class AuctionActor() extends Actor with PersistentFSM[AuctionState, AuctionState
   def getSystemUserId: UUID = UUID.randomUUID()
 }
 
-object AuctionActor {
+object AuctionActor extends AuctionActorHelpers {
 
   case object AuctionStartedReply
 
@@ -802,10 +807,8 @@ object AuctionActor {
     BigDecimal((bidPrice / bidIncrement).toInt) * bidIncrement
   }
 
-  def getActorName(auctionId: UUID): String = s"auction-$auctionId"
-
   def createAuctionActor(auction: Auction)(implicit system: ActorSystem): ActorRef = {
-    val name = getActorName(auction.auctionId)
+    val name = getAuctionActorName(auction.auctionId)
     Logger.info(s"Creating actor with name $name")
 
     system.actorOf(Props(new AuctionActor()), name = name)

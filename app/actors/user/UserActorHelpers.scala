@@ -10,16 +10,16 @@ import akka.actor.{ActorSelection, ActorSystem}
   */
 trait UserActorHelpers {
 
-  def getActorPrefix = s"/user/" + UserSupervisor.name + "/"
-  def getActorName(userId: UUID) = s"user-$userId"
+  def getUserActorPrefix = s"/user/" + UserSupervisor.name + "/"
+  def getUserActorName(userId: UUID) = s"user-$userId"
 
   /**
     * Returns de actor name and path that is suitable when calling the actorSelection function
     * @param userId The user's UUID
-    * @return A string of type "/user/user-e76988bb-d8e6-4e46-86ea-d41ca460139a"
+    * @return A string of type "/user/UserSupervisor/user-e76988bb-d8e6-4e46-86ea-d41ca460139a"
     */
   def getUserActorNameWithPath(userId: UUID): String = {
-    getActorPrefix + UserActor.getActorName(userId)
+    getUserActorPrefix + getUserActorName(userId)
   }
 
   /**

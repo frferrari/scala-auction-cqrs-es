@@ -130,7 +130,7 @@ object UserActor extends UserActorHelpers {
   case class CurrentStateReply(state: UserState, stateData: UserStateData)
 
   def createUserActor(user: User, userUnicityActorRef: ActorRef)(implicit system: ActorSystem): ActorRef = {
-    val name = getActorName(user.userId)
+    val name = getUserActorName(user.userId)
     Logger.info(s"UserActor.createUserActor Creating actor with name $name")
 
     val actorRef: ActorRef = system.actorOf(Props(new UserActor(userUnicityActorRef)), name = name)

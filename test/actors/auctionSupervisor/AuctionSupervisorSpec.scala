@@ -5,7 +5,8 @@ import java.time.Instant
 import actors.ActorCommonsSpec
 import actors.auction.AuctionActor.{AuctionStartedReply, CurrentStateReply}
 import actors.auction.AuctionActorHelpers
-import actors.auction.fsm.{InactiveAuction, StartedState}
+import actors.auction.fsm.{ActiveAuction, StartedState}
+import actors.user.UserActor.UserRegisteredReply
 import actors.userSupervisor.UserSupervisor
 import actors.userUnicity.UserUnicityActor
 import akka.actor.{ActorRef, ActorSystem, Props}
@@ -50,15 +51,20 @@ class AuctionSupervisorSpec
       seller.userId
     )
 
+    "be able to create a user" in {
+      userSupervisorActorRef ! CreateUser(seller)
+      expectMsg(UserRegisteredReply)
+    }
+
     "be able to create an auction" in {
       auctionSupervisorActorRef ! CreateAuction(auction)
       expectMsg(AuctionStartedReply)
     }
 
     "successfully check that the auction actor is in StartedState" in {
-      getAuctionActorSelection(auction.auctionId) ! GetAuctionCurrentState
+      getAuctionActorSelection(auction.auctionId) ! GetCurrentState
       expectMsgPF() {
-        case (CurrentStateReply(StartedState, InactiveAuction)) => ()
+        case (CurrentStateReply(StartedState, _: ActiveAuction)) => ()
       }
     }
   }
