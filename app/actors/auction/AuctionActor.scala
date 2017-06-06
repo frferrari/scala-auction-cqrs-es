@@ -636,7 +636,8 @@ class AuctionActor()
         )
 
       case remainingStock =>
-        Logger.info(s"AuctionActor ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, remaining stock is $remainingStock, duplicate the auction")
+        Logger.info(s"AuctionActor ${stateDataBefore.auction.auctionId} sold for a qty of ${bidPlaced.usersBid.requestedQty}, remaining stock is $remainingStock, CLONE the auction")
+
         val bid = Bid(
           bidderId = bidPlaced.usersBid.bidderId,
           bidderName = bidPlaced.usersBid.bidderName,
@@ -648,16 +649,7 @@ class AuctionActor()
           timeExtended = false,
           createdAt = bidPlaced.usersBid.createdAt
         )
-        /* TODO Handle duplication via cloneParameters
-          %FsmAuctionData{fsm_data | 	closed_by: nil,
-                                      original_stock: event.requested_qty,
-                                      stock: 0,
-                                      clone_parameters: %{stock: new_stock,
-                                                        start_date_time: fsm_data.start_date_time,
-                                                        end_date_time: fsm_data.end_date_time},
-                                      end_date_time: event.created_at,
-                                      bids: [Map.from_struct(new_bid)]}
-         */
+
         stateDataBefore.placeBids(
           bids = List(bid),
           updatedEndsAt = stateDataBefore.auction.endsAt,

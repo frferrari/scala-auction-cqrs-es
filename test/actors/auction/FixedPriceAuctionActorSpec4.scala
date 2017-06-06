@@ -35,6 +35,7 @@ class FixedPriceAuctionActorSpec4() extends TestKit(ActorSystem("AuctionSystem")
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
+    Await.ready(system.terminate(), 5.seconds)
   }
 
   val app = new GuiceApplicationBuilder().build()

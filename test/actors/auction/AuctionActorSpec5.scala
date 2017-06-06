@@ -17,6 +17,7 @@ import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpecLike}
 import play.api.inject.BindingKey
 import play.api.inject.guice.GuiceApplicationBuilder
 
+import scala.concurrent.Await
 import scala.concurrent.duration._
 
 /**
@@ -32,6 +33,7 @@ class AuctionActorSpec5() extends TestKit(ActorSystem("AuctionSystem"))
 
   override def afterAll {
     TestKit.shutdownActorSystem(system)
+    Await.ready(system.terminate(), 5.seconds)
   }
 
   val app = new GuiceApplicationBuilder().build()
