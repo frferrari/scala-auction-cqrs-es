@@ -8,16 +8,26 @@ import actors.auction.AuctionActor
 import actors.user.UserActor
 import actors.userUnicity.UserUnicityActor
 import akka.actor.{ActorRef, ActorSystem}
+import akka.stream.scaladsl.{Flow, Framing, Source}
+import akka.stream.{ActorMaterializer, Graph, SourceShape}
+import akka.util.ByteString
+import akka.{Done, NotUsed}
 import cqrs.UsersBid
 import cqrs.commands._
 import models._
+import play.api.Logger
 import play.api.mvc.{Action, Controller}
+import priceCrawler.{PriceCrawlerUrl, PriceCrawlerUrlService, PriceCrawlerUrlSource}
+
+import scala.concurrent.Future
 
 /**
   * Created by Francois FERRARI on 31/05/2017
   */
 @Singleton
-class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef) extends Controller {
+class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)(implicit priceCrawlerUrlService: PriceCrawlerUrlService) extends Controller {
+
+  var x = 1
 
   def test = Action { implicit request =>
 
@@ -109,6 +119,49 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     Thread.sleep(60000)
 
     actorSystem.terminate()
+
+    Ok
+  }
+
+  def crawler = Action { implicit request =>
+
+    // http://doc.akka.io/docs/akka-http/current/scala/http/client-side/request-level.html
+
+    implicit val system = ActorSystem("test")
+    implicit val mat = ActorMaterializer()
+
+    Logger.info("====> inside Crawler")
+
+    val delimiter: Flow[ByteString, ByteString, NotUsed] =
+      Framing.delimiter(
+        ByteString("\r\n"),
+        maximumFrameLength = 100000,
+        allowTruncation = true)
+
+//    val f = Http().singleRequest(Get("http://www.andycot.fr")).flatMap { res =>
+//      val lines = res.entity.dataBytes.via(delimiter).map(_.utf8String)
+//      lines.runForeach { line =>
+//        println(line)
+//      }
+//    }
+
+//    val r = Source.fromFuture(generateUrls).initialDelay(2.seconds).grouped(2)
+
+//    val t = Http().singleRequest(HttpRequest(uri = "http://www.andycot.fr")).map { res =>
+//      res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).foreach { body =>
+//        println(body.utf8String)
+//      }
+//    }
+
+//    r.runForeach(x => println(s"=====> $x\n"))
+
+//    t.foreach { _ =>
+//      system.terminate()
+//    }
+
+    val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlSource
+    val mySource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(sourceGraph)
+    val r1: Future[Done] = mySource.take(5).runForeach(println)
 
     Ok
   }
