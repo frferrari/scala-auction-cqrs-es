@@ -7,17 +7,19 @@ import javax.inject.{Inject, Named, Singleton}
 import actors.auction.AuctionActor
 import actors.user.UserActor
 import actors.userUnicity.UserUnicityActor
+import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.HttpRequest
 import akka.stream.scaladsl.{Flow, Framing, Source}
 import akka.stream.{ActorMaterializer, Graph, SourceShape}
 import akka.util.ByteString
-import akka.{Done, NotUsed}
 import cqrs.UsersBid
 import cqrs.commands._
 import models._
 import play.api.Logger
 import play.api.mvc.{Action, Controller}
-import priceCrawler.{PriceCrawlerUrl, PriceCrawlerUrlService, PriceCrawlerUrlSource}
+import priceCrawler.{PriceCrawlerUrl, PriceCrawlerUrlGraphStage, PriceCrawlerUrlService}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -123,7 +125,7 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     Ok
   }
 
-  def crawler = Action.async { implicit request =>
+  def crawler = Action { implicit request =>
 
     // http://doc.akka.io/docs/akka-http/current/scala/http/client-side/request-level.html
 
@@ -159,13 +161,50 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
 //      system.terminate()
 //    }
 
-    priceCrawlerUrlService.findPriceCrawlerUrls.map { implicit urls =>
-      val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlSource
-      val mySource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(sourceGraph)
-      val r1: Future[Done] = mySource.take(20).runForeach(p)
+    val numberOfUrlsProcessedInParallel = 2
 
-      Ok
+    /**
+      *
+      */
+    val getHtmlContentFromBaseUrl: Flow[PriceCrawlerUrl, (PriceCrawlerUrl, String), NotUsed] = Flow[PriceCrawlerUrl].mapAsync[(PriceCrawlerUrl, String)](numberOfUrlsProcessedInParallel) { priceCrawlerUrl =>
+      Logger.info(s"Processing url $priceCrawlerUrl")
+      val htmlContentF: Future[String] = Http().singleRequest(HttpRequest(uri = priceCrawlerUrl.url)).flatMap { res =>
+        res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
+      }
+
+      htmlContentF.map(htmlContent => (priceCrawlerUrl -> htmlContent))
     }
+
+    /**
+      *
+      */
+    val generatePagedUrlsFromBaseUrl: Flow[(PriceCrawlerUrl, String), (PriceCrawlerUrl, Seq[String]), NotUsed] = Flow[(PriceCrawlerUrl, String)].map {
+      case (baseUrl, htmlContent) =>
+        val pageNumberRegex = """.*<a class="pag-number.*" href=".*">([0-9]+)</a>.*""".r
+        pageNumberRegex.findAllIn(htmlContent).matchData.flatMap(_.subgroups).toList.lastOption match {
+          case Some(lastPageNumber) =>
+            baseUrl -> priceCrawlerUrlService.generateAllUrls(baseUrl, lastPageNumber.toInt)
+
+          case None =>
+            throw new IllegalArgumentException(s"Enable to parse the last page number from url $baseUrl")
+        }
+    }
+
+    val priceCrawlerUrlGraphStage : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage
+    val priceCrawlerUrlSource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(priceCrawlerUrlGraphStage)
+    // priceCrawlerUrlSource.take(20).runForeach(p)
+    priceCrawlerUrlSource.via(getHtmlContentFromBaseUrl).via(generatePagedUrlsFromBaseUrl).runForeach(p2)
+
+    Ok
+  }
+
+  /**
+    *
+    * @param s
+    */
+  def p2(s: (PriceCrawlerUrl, Seq[String])) = {
+    println(s"${s._1.url} --> ${s._2}")
+    Thread.sleep(4000)
   }
 
   def p(url: PriceCrawlerUrl) = {

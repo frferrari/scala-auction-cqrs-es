@@ -25,12 +25,12 @@ import scala.util.{Failure, Success, Try}
   * http://doc.akka.io/docs/akka/current/scala/stream/stream-customize.html#custom-processing-with-graphstage
   *
   */
-class PriceCrawlerUrlSource @Inject()(implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext)
+class PriceCrawlerUrlGraphStage @Inject()(implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext)
   extends GraphStage[SourceShape[PriceCrawlerUrl]] {
 
   val elapsedSecondsBetweenUpdates = 300
 
-  val out: Outlet[PriceCrawlerUrl] = Outlet("PriceCrawlerUrlSource")
+  val out: Outlet[PriceCrawlerUrl] = Outlet("PriceCrawlerUrlGraphStage")
   override val shape: SourceShape[PriceCrawlerUrl] = SourceShape(out)
 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {

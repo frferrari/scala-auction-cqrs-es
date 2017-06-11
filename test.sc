@@ -10,7 +10,7 @@ lazy implicit val materializer = ActorMaterializer()
 
 val mongoService = new PriceCrawlerUrlService
 
-val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlSource(mongoService)
+val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage(mongoService)
 
 val mySource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(sourceGraph)
 
