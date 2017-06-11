@@ -19,13 +19,13 @@ import play.api.Logger
 import play.api.mvc.{Action, Controller}
 import priceCrawler.{PriceCrawlerUrl, PriceCrawlerUrlService, PriceCrawlerUrlSource}
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * Created by Francois FERRARI on 31/05/2017
   */
 @Singleton
-class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)(implicit priceCrawlerUrlService: PriceCrawlerUrlService) extends Controller {
+class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)(implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext) extends Controller {
 
   var x = 1
 
@@ -123,7 +123,7 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     Ok
   }
 
-  def crawler = Action { implicit request =>
+  def crawler = Action.async { implicit request =>
 
     // http://doc.akka.io/docs/akka-http/current/scala/http/client-side/request-level.html
 
@@ -159,10 +159,17 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
 //      system.terminate()
 //    }
 
-    val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlSource
-    val mySource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(sourceGraph)
-    val r1: Future[Done] = mySource.take(5).runForeach(println)
+    priceCrawlerUrlService.findPriceCrawlerUrls.map { implicit urls =>
+      val sourceGraph : Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlSource
+      val mySource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(sourceGraph)
+      val r1: Future[Done] = mySource.take(20).runForeach(p)
 
-    Ok
+      Ok
+    }
+  }
+
+  def p(url: PriceCrawlerUrl) = {
+    // Thread.sleep(5000)
+    println(url)
   }
 }
