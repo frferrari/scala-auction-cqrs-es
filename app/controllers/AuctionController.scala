@@ -19,7 +19,7 @@ import cqrs.commands._
 import models._
 import play.api.Logger
 import play.api.mvc.{Action, Controller}
-import priceCrawler.{PriceCrawlerUrl, PriceCrawlerUrlGraphStage, PriceCrawlerUrlService, ResourceUnavailable}
+import priceCrawler._
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -163,50 +163,51 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     //      system.terminate()
     //    }
 
-    val numberOfUrlsProcessedInParallel = 2
+    val numberOfUrlsProcessedInParallel = 1
 
     /**
       *
       */
-    val getHtmlContentFromBaseUrl: Flow[PriceCrawlerUrl, BasePriceCrawlerUrlWithHtmlContent, NotUsed] = Flow[PriceCrawlerUrl].mapAsync[BasePriceCrawlerUrlWithHtmlContent](numberOfUrlsProcessedInParallel) { priceCrawlerUrl =>
-      Logger.info(s"Processing website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
-      val htmlContentF: Future[String] = Http().singleRequest(HttpRequest(uri = priceCrawlerUrl.url)).flatMap {
-        case res if res.status.isSuccess =>
-          res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
+    val getHtmlContentFromBaseUrl: Flow[PriceCrawlerUrl, BasePriceCrawlerUrlWithHtmlContent, NotUsed] =
+      Flow[PriceCrawlerUrl].mapAsync[BasePriceCrawlerUrlWithHtmlContent](numberOfUrlsProcessedInParallel) { priceCrawlerUrl =>
+        Logger.info(s"Processing website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
 
-        case res =>
-          Logger.error(s"Unable to access website ${priceCrawlerUrl.website} with url ${priceCrawlerUrl.url} error ${res.status}")
-          throw new ResourceUnavailable("sUnable to access website ${priceCrawlerUrl.website} with url ${priceCrawlerUrl.url} error ${res.status}")
+        val htmlContentF: Future[String] = Http().singleRequest(HttpRequest(uri = priceCrawlerUrl.url)).flatMap {
+          case res if res.status.isSuccess =>
+            res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
+
+          case res =>
+            Logger.error(s"Unable to access website ${priceCrawlerUrl.website} with url ${priceCrawlerUrl.url} error ${res.status}")
+            throw new ResourceUnavailable("sUnable to access website ${priceCrawlerUrl.website} with url ${priceCrawlerUrl.url} error ${res.status}")
+        }
+
+        htmlContentF.map(htmlContent => priceCrawlerUrl -> htmlContent)
       }
 
-      htmlContentF.map(htmlContent => priceCrawlerUrl -> htmlContent)
-    }
-
     /**
       *
       */
-    val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, (BasePriceCrawlerUrlWithHtmlContent, Seq[String]), NotUsed] = Flow[BasePriceCrawlerUrlWithHtmlContent].map {
-      case (priceCrawlerUrl, htmlContent) =>
-        val pageNumberRegex = """.*<a class="pag-number.*" href=".*">([0-9]+)</a>.*""".r
-        pageNumberRegex.findAllIn(htmlContent).matchData.flatMap(_.subgroups).toList.lastOption match {
-          case Some(lastPageNumber) =>
-            (priceCrawlerUrl, htmlContent) -> priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
+    val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, (BasePriceCrawlerUrlWithHtmlContent, Seq[String]), NotUsed] =
+      Flow[BasePriceCrawlerUrlWithHtmlContent].map {
+        case (priceCrawlerUrl, htmlContent) if priceCrawlerUrl.website == PriceCrawlerWebsite.DELCAMPE =>
+          PriceCrawlerDelcampe.getPagedUrls(priceCrawlerUrl, htmlContent)
+      }
 
-          case None =>
-            Logger.error(s"Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
-            throw new IllegalArgumentException(s"Enable to parse the last page number from url $priceCrawlerUrl")
-        }
-    }
+    val generatePriceCrawlerAuctions: Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String]), Seq[PriceCrawlerAuction], NotUsed] =
+      Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String])].map {
+        case ((priceCrawlerUrl, htmlContent), auctionUrls) =>
+          PriceCrawlerDelcampe.getAuctionUrls(htmlContent)
+      }
 
     val priceCrawlerUrlGraphStage: Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage
     val priceCrawlerUrlSource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(priceCrawlerUrlGraphStage)
     // priceCrawlerUrlSource.take(20).runForeach(p)
 
     priceCrawlerUrlSource
-      .log("===>#0 ")
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
-      .runForeach(p2)
+        .via(generatePriceCrawlerAuctions)
+      .runForeach(p3)
 
     Ok
   }
@@ -215,6 +216,11 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     *
     * @param s
     */
+  def p3(s: Seq[PriceCrawlerAuction]) = {
+    println(s"========================> $s")
+    Thread.sleep(4000)
+  }
+
   def p2(s: (BasePriceCrawlerUrlWithHtmlContent, Seq[String])) = {
     println(s"${s._1._1.url} --> ${s._2}")
     Thread.sleep(4000)

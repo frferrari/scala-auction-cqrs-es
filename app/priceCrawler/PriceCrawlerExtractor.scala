@@ -5,4 +5,5 @@ package priceCrawler
   */
 trait PriceCrawlerExtractor {
   def getAuctionUrls(htmlContent: String): List[PriceCrawlerAuction]
+  def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): ((PriceCrawlerUrl, String), List[String])
 }

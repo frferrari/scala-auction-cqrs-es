@@ -9,6 +9,11 @@ import scala.util.matching.Regex
   */
 
 object PriceCrawlerDelcampe extends PriceCrawlerExtractor {
+  /**
+    *
+    * @param htmlContent
+    * @return
+    */
   override def getAuctionUrls(htmlContent: String): List[PriceCrawlerAuction] = {
     /*
      *
@@ -44,6 +49,26 @@ object PriceCrawlerDelcampe extends PriceCrawlerExtractor {
       case false =>
         Logger.error(s"Enable to parse thumbnails (${thumbnails.length}) or auctions (${auctions.length}) or auctionIds (${auctionIds.length})")
         Nil
+    }
+  }
+
+  /**
+    *
+    * @param priceCrawlerUrl
+    * @param htmlContent
+    * @param priceCrawlerUrlService
+    * @return
+    */
+  override def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): ((PriceCrawlerUrl, String), List[String]) = {
+    val pageNumberRegex = """.*<a class="pag-number.*" href=".*">([0-9]+)</a>.*""".r
+
+    pageNumberRegex.findAllIn(htmlContent).matchData.flatMap(_.subgroups).toList.lastOption match {
+      case Some(lastPageNumber) =>
+        (priceCrawlerUrl, htmlContent) -> priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
+
+      case None =>
+        Logger.error(s"Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
+        throw new IllegalArgumentException(s"Enable to parse the last page number from url $priceCrawlerUrl")
     }
   }
 }
