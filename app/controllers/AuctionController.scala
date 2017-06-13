@@ -189,14 +189,14 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
       */
     val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, (BasePriceCrawlerUrlWithHtmlContent, Seq[String]), NotUsed] =
       Flow[BasePriceCrawlerUrlWithHtmlContent].map {
-        case (priceCrawlerUrl, htmlContent) if priceCrawlerUrl.website == PriceCrawlerWebsite.DELCAMPE =>
-          PriceCrawlerDelcampe.getPagedUrls(priceCrawlerUrl, htmlContent)
+        case (priceCrawlerUrl, htmlContent) if priceCrawlerUrl.website == PriceCrawlerWebsite.DCP =>
+          PriceCrawlerDCP.getPagedUrls(priceCrawlerUrl, htmlContent)
       }
 
     val generatePriceCrawlerAuctions: Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String]), Seq[PriceCrawlerAuction], NotUsed] =
       Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String])].map {
         case ((priceCrawlerUrl, htmlContent), auctionUrls) =>
-          PriceCrawlerDelcampe.getAuctionUrls(htmlContent)
+          PriceCrawlerDCP.extractAuctions(htmlContent)
       }
 
     val priceCrawlerUrlGraphStage: Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage
