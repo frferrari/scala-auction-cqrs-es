@@ -11,8 +11,8 @@ import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpRequest
+import akka.stream._
 import akka.stream.scaladsl.{Flow, Framing, Source}
-import akka.stream.{ActorMaterializer, Graph, SourceShape}
 import akka.util.ByteString
 import cqrs.UsersBid
 import cqrs.commands._
@@ -27,7 +27,9 @@ import scala.concurrent.{ExecutionContext, Future}
   * Created by Francois FERRARI on 31/05/2017
   */
 @Singleton
-class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)(implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext) extends Controller {
+class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)
+                                 (implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext)
+  extends Controller {
 
   type BasePriceCrawlerUrlWithHtmlContent = (PriceCrawlerUrl, String)
 
@@ -132,7 +134,18 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     // http://doc.akka.io/docs/akka-http/current/scala/http/client-side/request-level.html
 
     implicit val system = ActorSystem("test")
-    implicit val mat = ActorMaterializer()
+
+    val decider: Supervision.Decider = {
+      case _: ArithmeticException => Supervision.Resume
+      case e =>
+        Logger.error("==========> Supervision.Decider caught exception", e)
+        Supervision.Stop
+    }
+
+    implicit val materializer: ActorMaterializer = ActorMaterializer(
+      ActorMaterializerSettings(system).withSupervisionStrategy(decider))
+
+    // implicit val mat = ActorMaterializer()
 
     Logger.info("====> inside Crawler")
 
@@ -166,7 +179,8 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     val numberOfUrlsProcessedInParallel = 1
 
     /**
-      *
+      * Produces a list of URLs and their HTML content, this URLs are the base URLs where we can find
+      * the first and the last page number where auctions are listed.
       */
     val getHtmlContentFromBaseUrl: Flow[PriceCrawlerUrl, BasePriceCrawlerUrlWithHtmlContent, NotUsed] =
       Flow[PriceCrawlerUrl].mapAsync[BasePriceCrawlerUrlWithHtmlContent](numberOfUrlsProcessedInParallel) { priceCrawlerUrl =>
@@ -185,31 +199,78 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
       }
 
     /**
-      *
+      * Generates a list of URLs to eventually parse auctions from,
+      * http://www.andycot.fr/...&page=1
+      * http://www.andycot.fr/...&page=2
+      * http://www.andycot.fr/...&page=3
+      * ...
+      * http://www.andycot.fr/...&page=26
       */
-    val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, (BasePriceCrawlerUrlWithHtmlContent, Seq[String]), NotUsed] =
+    val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, Seq[PriceCrawlerUrlContent], NotUsed] =
       Flow[BasePriceCrawlerUrlWithHtmlContent].map {
         case (priceCrawlerUrl, htmlContent) if priceCrawlerUrl.website == PriceCrawlerWebsite.DCP =>
-          PriceCrawlerDCP.getPagedUrls(priceCrawlerUrl, htmlContent)
+          val priceCrawlerUrlContents = PriceCrawlerDCP.getPagedUrls(priceCrawlerUrl, htmlContent).foldLeft(Seq.empty[PriceCrawlerUrlContent]) {
+            case (acc, url) if acc.isEmpty =>
+              acc :+ PriceCrawlerUrlContent(url, Some(htmlContent))
+
+            case (acc, url) =>
+              acc :+ PriceCrawlerUrlContent(url, None)
+          }
+
+          // PriceCrawlerUrlRelations(priceCrawlerUrl, priceCrawlerUrlContents)
+        priceCrawlerUrlContents
       }
 
-    val generatePriceCrawlerAuctions: Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String]), Seq[PriceCrawlerAuction], NotUsed] =
-      Flow[(BasePriceCrawlerUrlWithHtmlContent, Seq[String])].map {
-        case ((priceCrawlerUrl, htmlContent), auctionUrls) =>
-          PriceCrawlerDCP.extractAuctions(htmlContent)
-      }
+    /**
+      *
+      */
+//    val generatePriceCrawlerAuctions: Flow[PriceCrawlerUrlRelations, Seq[PriceCrawlerAuction], NotUsed] =
+//      Flow[(PriceCrawlerUrl, Seq[(String, Option[String])]].map {
+//        case (priceCrawlerUrl, urlWithHtmlContent) => urlWithHtmlContent.map {
+//          case (url, Some(htmlContent)) =>
+//            PriceCrawlerDCP.extractAuctions(htmlContent)
+//
+////          case (url, None) =>
+////            Source(List(priceCrawlerUrl.copy(url = url)))
+////              .via(getHtmlContentFromBaseUrl)
+////                .map(m => (m._1, ))
+////              .via()
+//        }
+//      }
 
+    //
+    //
+    //
     val priceCrawlerUrlGraphStage: Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage
     val priceCrawlerUrlSource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(priceCrawlerUrlGraphStage)
     // priceCrawlerUrlSource.take(20).runForeach(p)
 
-    priceCrawlerUrlSource
+    val priceCrawlerAuctionsGraphStage: PriceCrawlerAuctionsGraphStage = new PriceCrawlerAuctionsGraphStage
+    val priceCrawlerAuctionsFlow: Flow[PriceCrawlerUrlContent, PriceCrawlerAuction, NotUsed] = Flow.fromGraph(priceCrawlerAuctionsGraphStage)
+
+    val r = priceCrawlerUrlSource
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
-        .via(generatePriceCrawlerAuctions)
-      .runForeach(p3)
+//        .mapConcat(identity)
+      // .via(priceCrawlerAuctionsFlow)
+
+
+      // .via(priceCrawlerAuctionsFlow)
+      // .runForeach(p4)
+
+//      .mapConcat(identity)
+      // .via(priceCrawlerAuctionsFlow)
+
+//      .via(priceCrawlerAuctionsFlow)
+//       .via(generatePriceCrawlerAuctions)
+//      .runForeach(p3)
 
     Ok
+  }
+
+  def p4(priceCrawlerAuction: PriceCrawlerAuction) = {
+    println(s"====> $priceCrawlerAuction")
+    Thread.sleep(2000)
   }
 
   /**

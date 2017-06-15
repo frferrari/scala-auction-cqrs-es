@@ -22,7 +22,8 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
   )
 
   // Matches a price string like this one "6,00 €"
-  val priceCurrencyRegex = """([0-9,.]+)(.*)""".r
+  val priceCurrencyRegex =
+    """([0-9,.]+)(.*)""".r
 
   /**
     *
@@ -56,7 +57,7 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
      */
     val itemPriceRegex =
       """(?s)<div class="item-price">[^<]*<strong>([^<]+)</strong>""".r
-      // """(?s).*<div class="item-price">.*<strong>([^<]+)</strong>.*</div>.*""".r
+    // """(?s).*<div class="item-price">.*<strong>([^<]+)</strong>.*</div>.*""".r
 
     /*
      *
@@ -91,12 +92,12 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
     * @param priceCrawlerUrlService
     * @return
     */
-  override def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): ((PriceCrawlerUrl, String), List[String]) = {
+  override def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): List[String] = {
     val pageNumberRegex = """.*<a class="pag-number.*" href=".*">([0-9]+)</a>.*""".r
 
     pageNumberRegex.findAllIn(htmlContent).matchData.flatMap(_.subgroups).toList.lastOption match {
       case Some(lastPageNumber) =>
-        (priceCrawlerUrl, htmlContent) -> priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
+        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
 
       case None =>
         Logger.error(s"Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")

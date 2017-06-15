@@ -37,4 +37,11 @@ class PriceCrawlerUrlService {
 
     (1 to maxPageNumber).map(generateUrl(priceCrawlerBaseUrl)).toList
   }
+
+  /**
+    *
+    * @param auctionIds
+    * @return
+    */
+  def auctionsAlreadyRecorded(auctionIds: Seq[PriceCrawlerAuction]): Seq[PriceCrawlerAuction] = Nil
 }
