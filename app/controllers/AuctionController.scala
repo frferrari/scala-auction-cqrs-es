@@ -248,11 +248,97 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     val priceCrawlerAuctionsGraphStage: PriceCrawlerAuctionsGraphStage = new PriceCrawlerAuctionsGraphStage
     val priceCrawlerAuctionsFlow: Flow[PriceCrawlerUrlContent, PriceCrawlerAuction, NotUsed] = Flow.fromGraph(priceCrawlerAuctionsGraphStage)
 
-    val r = priceCrawlerUrlSource
+//    val l = List(
+//      PriceCrawlerUrlContent("a", None),
+//      PriceCrawlerUrlContent("b", None)
+//    )
+//
+//    val ttt: Source[Seq[PriceCrawlerAuction], NotUsed] = Source.unfoldAsync(l) {
+//      case (PriceCrawlerUrlContent(url, Some(htmlContent)) :: tail) =>
+//        val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+//        val alreadyRecorded: Seq[PriceCrawlerAuction] = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+//
+//        Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
+//
+//        if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+//          Future.successful(None)
+//        } else {
+//          Future.successful(Option(tail, alreadyRecorded))
+//        }
+//
+//      case (PriceCrawlerUrlContent(url, None) :: tail) =>
+//        getHtmlContent(url).map { htmlContent =>
+//          val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+//          val alreadyRecorded: Seq[PriceCrawlerAuction] = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+//
+//          Logger.info(s"auctionIds=${auctions.map(_.auctionId)}")
+//
+//          if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+//            None
+//          } else {
+//            Option(tail, alreadyRecorded)
+//          }
+//        }
+//
+//      case _ =>
+//        Future.successful(None)
+//    }
+
+
+    val t = priceCrawlerUrlSource
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
-//        .mapConcat(identity)
-      // .via(priceCrawlerAuctionsFlow)
+      .flatMapConcat { urls =>
+        Source.unfoldAsync(urls) {
+          case (PriceCrawlerUrlContent(url, Some(htmlContent)) :: tail) =>
+            Logger.info(s"ExtractAuctions $url")
+            val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+            val alreadyRecorded = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+
+            Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
+
+            if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+              Future.successful(None)
+            } else {
+              Future.successful(Some(tail, alreadyRecorded))
+            }
+
+          case (PriceCrawlerUrlContent(url, None) :: tail) =>
+            Logger.info(s"call getHtmlContent $url")
+            getHtmlContent(url).map { htmlContent =>
+              Logger.info(s"ExtractionAuctions $url")
+              val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+              val alreadyRecorded: Seq[PriceCrawlerAuction] = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+
+              Logger.info(s"auctionIds=${auctions.map(_.auctionId)}")
+
+              if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+                None
+              } else {
+                Some(tail, alreadyRecorded)
+              }
+            }
+
+          case _ =>
+            Logger.info("None")
+            Future.successful(None)
+        }
+      }
+      .runForeach(p4seq)
+
+//    val r = priceCrawlerUrlSource
+//      .via(getHtmlContentFromBaseUrl)
+//      .via(generatePagedUrlsFromBaseUrl)
+//      .flatMapConcat(urls =>
+//        Source
+//          .fromIterator(() => urls.toIterator)
+//          .log("====== (2)")
+//          .via(priceCrawlerAuctionsFlow)
+//      )
+//      .runForeach(p4)
+
+//          .fold(Seq.empty[PriceCrawlerAuction]){ case (acc, el) => acc :+ el })
+//      .runForeach(p4seq)
 
 
       // .via(priceCrawlerAuctionsFlow)
@@ -267,9 +353,18 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
 
     Ok
   }
+  def p5(s: Seq[PriceCrawlerUrlContent]) = {
+    println(s"========================> ${s.map(_.url)}")
+    Thread.sleep(4000)
+  }
+
+  def p4seq(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
+    println(s"====> ${priceCrawlerAuctions.map(_.auctionId)}")
+    Thread.sleep(2000)
+  }
 
   def p4(priceCrawlerAuction: PriceCrawlerAuction) = {
-    println(s"====> $priceCrawlerAuction")
+    println(s"====> ${priceCrawlerAuction.auctionId}")
     Thread.sleep(2000)
   }
 
@@ -291,4 +386,19 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     // Thread.sleep(5000)
     println(url)
   }
+
+  def getHtmlContent(url: String)(implicit system: ActorSystem, mat: ActorMaterializer): Future[String] = {
+    Logger.info(s"getHtmlContent($url)")
+
+    Http().singleRequest(HttpRequest(uri = url)).flatMap {
+      case res if res.status.isSuccess =>
+        Logger.info(s"getHtmlContent Success $url")
+        res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
+
+      case res =>
+        Logger.error(s"getHtmlContent Enable to access url $url error ${res.status}")
+        throw new ResourceUnavailable(s"Unable to access url $url error ${res.status}")
+    }
+  }
+
 }
