@@ -30,6 +30,9 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
   val priceCurrencyRegex =
     """([0-9,.]+)(.*)""".r
 
+  val auctionIdRegex =
+    """item-([0-9]+)""".r
+
   /**
     *
     * @param htmlContent
@@ -41,11 +44,11 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
         case true =>
           val element: Element = elementsIterator.next()
           val imageContainer = element.select("div.item-content > div.image-container")
-          val auctionId = imageContainer.select("a.img-view").attr("data-item-id")
+          // val auctionId = imageContainer.select("a.img-view").attr("data-item-id")
+          val auctionIdRegex(auctionId) = element.attr("id")
 
           if (imageContainer.select("a.img-view").hasClass("default-thumb")) {
-
-            Logger.info(s"extractAuction: auction $auctionId has no picture, skipping ...")
+            Logger.info(s"PriceCrawlerDCP.extractAuction auction $auctionId has no picture, skipping ...")
             extractAuction(elementsIterator, priceCrawlerAuctions)
           } else {
 
@@ -75,6 +78,7 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
                   extractAuction(elementsIterator, priceCrawlerAuctions)
               }
             } else {
+              Logger.info(s"PriceCrawlerDCP.extractAuction auction $auctionId is missing some informations, skipping ...")
               extractAuction(elementsIterator, priceCrawlerAuctions)
             }
           }
@@ -102,8 +106,8 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
         priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
 
       case None =>
-        Logger.error(s"Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
-        throw new IllegalArgumentException(s"Enable to parse the last page number from url $priceCrawlerUrl")
+        Logger.error(s"PriceCrawlerDCP.getPagedUrls Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
+        throw new IllegalArgumentException(s"PriceCrawlerDCP.getPagedUrls Enable to parse the last page number from url $priceCrawlerUrl")
     }
   }
 
@@ -119,11 +123,11 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
     mapToInternalCurrency(externalCurrency) match {
       case Some(internalCurrency) =>
         // An external price is a string like "120,00" or "4 950,00"
-        PriceCrawlerItemPrice(BigDecimal(price.replace(",", ".").replace(" ", "")), internalCurrency)
+        PriceCrawlerItemPrice(price.replace(",", ".").replace(" ", ""), internalCurrency)
 
       case _ =>
-        Logger.error(s"PriceCrawlerItemPrice Couldn't parse currency $externalCurrency")
-        throw new Exception(s"PriceCrawlerItemPrice Couldn't parse currency $externalCurrency")
+        Logger.error(s"PriceCrawlerDCP.getItemPrice Couldn't parse currency $externalCurrency")
+        throw new Exception(s"PriceCrawlerDCP.getItemPrice Couldn't parse currency $externalCurrency")
     }
   }
 

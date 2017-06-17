@@ -39,7 +39,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "anorm" % "2.5.3" withSources(),
 
   // MongoDB
-  "org.mongodb.scala" %% "mongo-scala-driver" % "2.0.0",
+  "org.mongodb.scala" %% "mongo-scala-driver" % "2.1.0",
 
   // streams
   "com.typesafe.akka" %% "akka-stream" % "2.5.2",

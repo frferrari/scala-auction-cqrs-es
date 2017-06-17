@@ -28,7 +28,9 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 @Singleton
 class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)
-                                 (implicit priceCrawlerUrlService: PriceCrawlerUrlService, ec: ExecutionContext)
+                                 (implicit priceCrawlerUrlService: PriceCrawlerUrlService,
+                                  priceCrawlerAuctionService: PriceCrawlerAuctionService,
+                                  ec: ExecutionContext)
   extends Controller {
 
   type BasePriceCrawlerUrlWithHtmlContent = (PriceCrawlerUrl, String)
