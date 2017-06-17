@@ -4,7 +4,7 @@ import javax.inject.Inject
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.HttpRequest
+import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import akka.stream.stage._
 import akka.stream.{ActorMaterializerSettings, _}
 import akka.util.ByteString
@@ -114,16 +114,21 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       */
     def processHtmlContent(htmlContent: String): Boolean = {
       // TODO PriceCrawlerDCP depends on the website we are crawling
-      val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
-      val alreadyRecorded = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+      PriceCrawlerDCP.extractAuctions(htmlContent) match {
+        case Success(auctions) =>
+          val alreadyRecorded = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
 
-      Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
+          Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
 
-      if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
-        true
-      } else {
-        priceCrawlerAuctions ++= alreadyRecorded
-        false
+          if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+            true
+          } else {
+            priceCrawlerAuctions ++= alreadyRecorded
+            false
+          }
+
+        case Failure(_) =>
+          true
       }
     }
 
@@ -134,6 +139,8 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       */
     def getHtmlContent(url: String): Future[String] = {
       Logger.info(s"PriceCrawlerAuctionsGraphStage.getHtmlContent($url)")
+
+      val r: Future[HttpResponse] = Http().singleRequest(HttpRequest(uri = url))
 
       Http().singleRequest(HttpRequest(uri = url)).flatMap {
         case res if res.status.isSuccess =>
