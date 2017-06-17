@@ -145,36 +145,11 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     implicit val materializer: ActorMaterializer = ActorMaterializer(
       ActorMaterializerSettings(system).withSupervisionStrategy(decider))
 
-    // implicit val mat = ActorMaterializer()
-
-    Logger.info("====> inside Crawler")
-
     val delimiter: Flow[ByteString, ByteString, NotUsed] =
       Framing.delimiter(
         ByteString("\r\n"),
         maximumFrameLength = 100000,
         allowTruncation = true)
-
-    //    val f = Http().singleRequest(Get("http://www.andycot.fr")).flatMap { res =>
-    //      val lines = res.entity.dataBytes.via(delimiter).map(_.utf8String)
-    //      lines.runForeach { line =>
-    //        println(line)
-    //      }
-    //    }
-
-    //    val r = Source.fromFuture(generateUrls).initialDelay(2.seconds).grouped(2)
-
-    //    val t = Http().singleRequest(HttpRequest(uri = "http://www.andycot.fr")).map { res =>
-    //      res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).foreach { body =>
-    //        println(body.utf8String)
-    //      }
-    //    }
-
-    //    r.runForeach(x => println(s"=====> $x\n"))
-
-    //    t.foreach { _ =>
-    //      system.terminate()
-    //    }
 
     val numberOfUrlsProcessedInParallel = 1
 
@@ -217,105 +192,74 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
               acc :+ PriceCrawlerUrlContent(url, None)
           }
 
-          // PriceCrawlerUrlRelations(priceCrawlerUrl, priceCrawlerUrlContents)
-        priceCrawlerUrlContents
+          priceCrawlerUrlContents
       }
-
-    /**
-      *
-      */
-//    val generatePriceCrawlerAuctions: Flow[PriceCrawlerUrlRelations, Seq[PriceCrawlerAuction], NotUsed] =
-//      Flow[(PriceCrawlerUrl, Seq[(String, Option[String])]].map {
-//        case (priceCrawlerUrl, urlWithHtmlContent) => urlWithHtmlContent.map {
-//          case (url, Some(htmlContent)) =>
-//            PriceCrawlerDCP.extractAuctions(htmlContent)
-//
-////          case (url, None) =>
-////            Source(List(priceCrawlerUrl.copy(url = url)))
-////              .via(getHtmlContentFromBaseUrl)
-////                .map(m => (m._1, ))
-////              .via()
-//        }
-//      }
 
     //
     //
     //
     val priceCrawlerUrlGraphStage: Graph[SourceShape[PriceCrawlerUrl], NotUsed] = new PriceCrawlerUrlGraphStage
     val priceCrawlerUrlSource: Source[PriceCrawlerUrl, NotUsed] = Source.fromGraph(priceCrawlerUrlGraphStage)
-    // priceCrawlerUrlSource.take(20).runForeach(p)
 
     val priceCrawlerAuctionsGraphStage: PriceCrawlerAuctionsGraphStage = new PriceCrawlerAuctionsGraphStage
     val priceCrawlerAuctionsFlow: Flow[PriceCrawlerUrlContent, PriceCrawlerAuction, NotUsed] = Flow.fromGraph(priceCrawlerAuctionsGraphStage)
 
-    val t = priceCrawlerUrlSource
+    // This code allows to do the same thing as the PriceCrawlerAuctionsGraphStage
+    //
+    //    val t = priceCrawlerUrlSource
+    //      .via(getHtmlContentFromBaseUrl)
+    //      .via(generatePagedUrlsFromBaseUrl)
+    //      .flatMapConcat { urls =>
+    //        Source.unfoldAsync(urls) {
+    //          case (PriceCrawlerUrlContent(url, Some(htmlContent)) :: tail) =>
+    //            Logger.info(s"ExtractAuctions $url")
+    //            val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+    //            val alreadyRecorded = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+    //
+    //            Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
+    //
+    //            if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+    //              Future.successful(None)
+    //            } else {
+    //              Future.successful(Some(tail, alreadyRecorded))
+    //            }
+    //
+    //          case (PriceCrawlerUrlContent(url, None) :: tail) =>
+    //            Logger.info(s"call getHtmlContent $url")
+    //            getHtmlContent(url).map { htmlContent =>
+    //              Logger.info(s"ExtractionAuctions $url")
+    //              val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
+    //              val alreadyRecorded: Seq[PriceCrawlerAuction] = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
+    //
+    //              Logger.info(s"auctionIds=${auctions.map(_.auctionId)}")
+    //
+    //              if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
+    //                None
+    //              } else {
+    //                Some(tail, alreadyRecorded)
+    //              }
+    //            }
+    //
+    //          case _ =>
+    //            Logger.info("None")
+    //            Future.successful(None)
+    //        }
+    //      }
+    //      .runForeach(p4seq)
+
+    val r = priceCrawlerUrlSource
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
-      .flatMapConcat { urls =>
-        Source.unfoldAsync(urls) {
-          case (PriceCrawlerUrlContent(url, Some(htmlContent)) :: tail) =>
-            Logger.info(s"ExtractAuctions $url")
-            val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
-            val alreadyRecorded = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
-
-            Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContent auctionIds=${auctions.map(_.auctionId)}")
-
-            if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
-              Future.successful(None)
-            } else {
-              Future.successful(Some(tail, alreadyRecorded))
-            }
-
-          case (PriceCrawlerUrlContent(url, None) :: tail) =>
-            Logger.info(s"call getHtmlContent $url")
-            getHtmlContent(url).map { htmlContent =>
-              Logger.info(s"ExtractionAuctions $url")
-              val auctions: List[PriceCrawlerAuction] = PriceCrawlerDCP.extractAuctions(htmlContent)
-              val alreadyRecorded: Seq[PriceCrawlerAuction] = priceCrawlerUrlService.auctionsAlreadyRecorded(auctions)
-
-              Logger.info(s"auctionIds=${auctions.map(_.auctionId)}")
-
-              if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
-                None
-              } else {
-                Some(tail, alreadyRecorded)
-              }
-            }
-
-          case _ =>
-            Logger.info("None")
-            Future.successful(None)
-        }
-      }
-      .runForeach(p4seq)
-
-//    val r = priceCrawlerUrlSource
-//      .via(getHtmlContentFromBaseUrl)
-//      .via(generatePagedUrlsFromBaseUrl)
-//      .flatMapConcat(urls =>
-//        Source
-//          .fromIterator(() => urls.toIterator)
-//          .log("====== (2)")
-//          .via(priceCrawlerAuctionsFlow)
-//      )
-//      .runForeach(p4)
-
-//          .fold(Seq.empty[PriceCrawlerAuction]){ case (acc, el) => acc :+ el })
-//      .runForeach(p4seq)
-
-
-      // .via(priceCrawlerAuctionsFlow)
-      // .runForeach(p4)
-
-//      .mapConcat(identity)
-      // .via(priceCrawlerAuctionsFlow)
-
-//      .via(priceCrawlerAuctionsFlow)
-//       .via(generatePriceCrawlerAuctions)
-//      .runForeach(p3)
+      .flatMapConcat(urls =>
+        Source
+          .fromIterator(() => urls.toIterator)
+          .via(priceCrawlerAuctionsFlow)
+      )
+      .runForeach(p4)
 
     Ok
   }
+
   def p5(s: Seq[PriceCrawlerUrlContent]) = {
     println(s"========================> ${s.map(_.url)}")
     Thread.sleep(4000)

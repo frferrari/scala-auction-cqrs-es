@@ -38,47 +38,50 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
   override val shape = FlowShape.of(in, out)
 
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
-    private var priceCrawlerUrlContents = mutable.Queue[PriceCrawlerAuction]()
+    private var priceCrawlerAuctions = mutable.Queue[PriceCrawlerAuction]()
 
     implicit val system = ActorSystem("andycot")
     implicit val mat: ActorMaterializer = ActorMaterializer(ActorMaterializerSettings(system))
-//
-//    override def preStart(): Unit = {
-//      Logger.info("PriceCrawlerAuctionsGraphStage.preStart()")
-//      pull(in)
-//    }
+    //
+    //    override def preStart(): Unit = {
+    //      Logger.info("PriceCrawlerAuctionsGraphStage.preStart()")
+    //      pull(in)
+    //    }
 
     setHandlers(in, out, new InHandler with OutHandler {
       override def onPush(): Unit = {
-        val nextElement: PriceCrawlerUrlContent = grab(in)
-        pull(in)
+        val nextUrlContent: PriceCrawlerUrlContent = grab(in)
 
-        Logger.info(s"PriceCrawlerAuctionsGraphStage.onPush() nextElement ${nextElement.url} htmlContent.isEmpty=${nextElement.htmlContent.isEmpty}")
+        Logger.info(s"PriceCrawlerAuctionsGraphStage.onPush() nextUrlContent ${nextUrlContent.url} htmlContent.isEmpty=${nextUrlContent.htmlContent.isEmpty}")
 
-        nextElement match {
+        nextUrlContent match {
           case PriceCrawlerUrlContent(url, Some(htmlContent)) =>
             if (processHtmlContent(htmlContent)) completeStage()
+            pull(in)
 
           case p@PriceCrawlerUrlContent(url, None) =>
+            /*
+             * We don't pull(in) here because the getHtmlContent is asynchronous.
+             * We want this future to complete before reading the next url to
+             * process and only then we can pull(in), otherwise we would have all
+             * this futures running concurrently.
+             * That's why the pull(in) is madefrom inside the getHtmlContentCB where
+             * we are sure that the future is finished.
+             */
             getHtmlContent(p.url).onComplete(getHtmlContentCB(p.url).invoke)
         }
       }
 
       override def onPull(): Unit = {
-        if (priceCrawlerUrlContents.nonEmpty) {
-          val nextElement: PriceCrawlerAuction = priceCrawlerUrlContents.dequeue
-          Logger.info(s"PriceCrawlerAuctionsGraphStage.onPull() dequeue $nextElement")
-          push(out, nextElement)
-        } else {
-          Logger.info(s"PriceCrawlerAuctionsGraphStage.onPull() empty queue")
-        }
+        pushNextAuction()
         pull(in)
       }
 
       override def onUpstreamFinish(): Unit = {
-        // TODO ??? Anything else to do ???
         Logger.info("PriceCrawlerAuctionsGraphStage.onUpstreamFinish()")
-        if (priceCrawlerUrlContents.isEmpty) completeStage()
+
+        pushAllAuctions()
+        // if (priceCrawlerAuctions.isEmpty) completeStage()
       }
     })
 
@@ -93,14 +96,13 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
     private def getHtmlContentCB(url: String) = getAsyncCallback[Try[String]] {
       case Success(htmlContent) =>
         Logger.info("PriceCrawlerAuctionsGraphStage.getHtmlContentCB")
+        pull(in)
         if (processHtmlContent(htmlContent)) completeStage()
 
       case Failure(f) =>
         Logger.error(s"Enable to get the htmlContent for url $url", f)
+        pull(in)
         completeStage()
-
-      case x =>
-        Logger.error(s"getHtmlContentCB ............... something else $x")
     }
 
     /**
@@ -120,7 +122,7 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       if (alreadyRecorded.length == auctions.length && auctions.nonEmpty) {
         true
       } else {
-        priceCrawlerUrlContents ++= alreadyRecorded
+        priceCrawlerAuctions ++= alreadyRecorded
         false
       }
     }
@@ -143,5 +145,22 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
           throw new ResourceUnavailable(s"Unable to access url $url error ${res.status}")
       }
     }
+
+    /**
+      *
+      */
+    def pushNextAuction(): Unit = if (priceCrawlerAuctions.nonEmpty) {
+      val nextAuction: PriceCrawlerAuction = priceCrawlerAuctions.dequeue
+
+      Logger.info(s"PriceCrawlerAuctionsGraphStage.pushNextAuction dequeue $nextAuction")
+      push(out, nextAuction)
+    } else {
+      Logger.info(s"PriceCrawlerAuctionsGraphStage.pushNextAuction empty queue")
+    }
+
+    /**
+      *
+      */
+    def pushAllAuctions(): Unit = priceCrawlerAuctions.foreach(push(out, _))
   }
 }
