@@ -15,8 +15,13 @@ class PriceCrawlerAuctionService {
   val mongoClient: MongoClient = MongoClient()
   val database: MongoDatabase = mongoClient.getDatabase("andycot")
 
-  // !!! IMPORTANT !!! The order in which the classOf clauses appear is important, so list first inner classes then outer classes, otherwise
-  // it won't work, arghhhhhh.
+  /*
+   * !!! IMPORTANT !!!
+   *
+   * The order in which the classOf clauses appear is important,
+   * so we must first list inner classes then outer classes, otherwise
+   * a collection.find won't work, arghhhhhhhhhhhhhhhh
+   */
   val codecRegistry = fromRegistries(fromProviders(classOf[PriceCrawlerItemPrice], classOf[PriceCrawlerAuction]), DEFAULT_CODEC_REGISTRY)
   val collection = database.getCollection[PriceCrawlerAuction]("priceCrawlerAuctions").withCodecRegistry(codecRegistry)
   collection.createIndex(Document("auctionId" -> 1, "unique" -> true))
@@ -40,6 +45,5 @@ class PriceCrawlerAuctionService {
     val auctionIds = priceCrawlerAuctions.map(_.auctionId)
 
     collection.find(in("auctionId", auctionIds:_*)).toFuture()
-    // collection.aggregate(Seq(filter(in("auctionId", auctionIds:_*)))).toFuture()
   }
 }

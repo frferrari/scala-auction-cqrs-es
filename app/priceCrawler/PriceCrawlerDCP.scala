@@ -8,6 +8,8 @@ import play.api.Logger
 
 import scala.annotation.tailrec
 import scala.collection.immutable.Seq
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -33,18 +35,12 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
   val auctionIdRegex =
     """item-([0-9]+)""".r
 
-  /**
-    *
-    * @param htmlContent
-    * @return
-    */
-  override def extractAuctions(htmlContent: String): Try[Seq[PriceCrawlerAuction]] = Try {
+  override def extractAuctions(htmlContent: String): Future[Seq[PriceCrawlerAuction]] = Future {
     @tailrec def extractAuction(elementsIterator: util.Iterator[Element], priceCrawlerAuctions: Seq[PriceCrawlerAuction] = Nil): Seq[PriceCrawlerAuction] = {
       elementsIterator.hasNext match {
         case true =>
           val element: Element = elementsIterator.next()
           val imageContainer = element.select("div.item-content > div.image-container")
-          // val auctionId = imageContainer.select("a.img-view").attr("data-item-id")
           val auctionIdRegex(auctionId) = element.attr("id")
 
           if (imageContainer.select("a.img-view").hasClass("default-thumb")) {
@@ -106,8 +102,8 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
         priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
 
       case None =>
-        Logger.error(s"PriceCrawlerDCP.getPagedUrls Enable to parse the last page number from website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
-        throw new IllegalArgumentException(s"PriceCrawlerDCP.getPagedUrls Enable to parse the last page number from url $priceCrawlerUrl")
+        // Case when there's only one page of auctions for this category
+        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, 1)
     }
   }
 

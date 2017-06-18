@@ -21,6 +21,7 @@ import play.api.Logger
 import play.api.mvc.{Action, Controller}
 import priceCrawler._
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
@@ -255,9 +256,12 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
       .flatMapConcat(urls =>
         Source
           .fromIterator(() => urls.toIterator)
+          // .throttle(1, 2.minutes, 0, ThrottleMode.enforcing)
           .via(priceCrawlerAuctionsFlow)
       )
-      .runForeach(p4)
+      .map { auction => priceCrawlerAuctionService.createOne(auction); auction }
+        .groupedWithin(120, 120.seconds)
+      .runForeach(p4seq2)
 
     Ok
   }
@@ -267,14 +271,21 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     Thread.sleep(4000)
   }
 
+  def p4seq2(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
+    val auctionIds = priceCrawlerAuctions.map(_.auctionId)
+    Logger.info(s"AuctionController.p4seq2 received ${auctionIds.length} auctionIds ************************")
+    Thread.sleep(2000)
+  }
+
   def p4seq(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
-    println(s"====> ${priceCrawlerAuctions.map(_.auctionId)}")
+    println(s"AuctionController.p4seq received auctionIds ================> ${priceCrawlerAuctions.map(_.auctionId)}")
     Thread.sleep(2000)
   }
 
   def p4(priceCrawlerAuction: PriceCrawlerAuction) = {
-    println(s"====> ${priceCrawlerAuction.auctionId}")
-    Thread.sleep(2000)
+    println(s"AuctionController.p4 received auctionId ================> ${priceCrawlerAuction.auctionId}")
+    // Thread.sleep(2000)
+    Thread.sleep(50)
   }
 
   /**

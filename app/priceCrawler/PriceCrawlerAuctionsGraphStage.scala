@@ -12,7 +12,6 @@ import play.api.Logger
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -45,35 +44,48 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
     implicit val system = ActorSystem("andycot")
     implicit val mat: ActorMaterializer = ActorMaterializer(ActorMaterializerSettings(system))
 
-    override def preStart(): Unit = {
-      Logger.info("PriceCrawlerAuctionsGraphStage.preStart()")
-      pull(in)
-    }
+    //    override def preStart(): Unit = {
+    //      Logger.info("PriceCrawlerAuctionsGraphStage.preStart()")
+    //      pull(in)
+    //    }
 
     setHandlers(in, out, new InHandler with OutHandler {
       override def onPush(): Unit = {
         val nextUrlContent: PriceCrawlerUrlContent = grab(in)
 
-        Logger.info(s"PriceCrawlerAuctionsGraphStage.onPush() nextUrlContent ${nextUrlContent.url} htmlContent.isEmpty=${nextUrlContent.htmlContent.isEmpty}")
+        Logger.info(s"PriceCrawlerAuctionsGraphStage.onPush() url ${nextUrlContent.url} empty htmlContent=${nextUrlContent.htmlContent.isEmpty}")
 
         nextUrlContent match {
+          // For the first page we always receive the htmlContent so we don't need to read it again
           case PriceCrawlerUrlContent(url, Some(htmlContent)) =>
-            processHtmlContent(url, htmlContent)
+            (for {
+              auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
+              alreadyRecorded <- priceCrawlerAuctionService.findMany(auctions)
+            } yield (auctions, alreadyRecorded)).onComplete(processHtmlContentCallback(url).invoke)
 
           case p@PriceCrawlerUrlContent(url, None) =>
-            getHtmlContent(p.url).map(processHtmlContent(p.url, _))
+            (for {
+              htmlContent <- getHtmlContent(p.url)
+              auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
+              alreadyRecorded <- priceCrawlerAuctionService.findMany(auctions)
+            } yield (auctions, alreadyRecorded)).onComplete(processHtmlContentCallback(url).invoke)
         }
       }
 
       override def onPull(): Unit = {
-        Logger.info("PriceCrawlerAuctionsGraphStage.onPull ...")
-        pushNextAuction()
-        // pull(in)
+        // Logger.info("PriceCrawlerAuctionsGraphStage.onPull() handler ...")
+        // We pullIn only if we have emptied the auctions queue, this way we process each url in "sequence"
+        if (!pushNextAuction() && !isClosed(in)) {
+          doPullIn("onPull() handler")
+        }
       }
 
       override def onUpstreamFinish(): Unit = {
-        Logger.info("PriceCrawlerAuctionsGraphStage.onUpstreamFinish()")
-        pushAllAuctionsAndComplete()
+        Logger.info(s"PriceCrawlerAuctionsGraphStage.onUpstreamFinish() ${priceCrawlerAuctions.size} remaining auctions to push")
+        if (priceCrawlerAuctions.nonEmpty)
+          emitAllAuctions()
+        else
+          completeStage()
       }
     })
 
@@ -97,73 +109,46 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
     }
 
     /**
-      * Callback called when the html content has been grabbed
-      *
       * http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/
       *
       * @param url The url from which the html content was grabbed from, for debug purposes
       * @return
       */
-    private def getHtmlContentCB(url: String) = getAsyncCallback[Try[String]] {
-      case Success(htmlContent) =>
-        processHtmlContent(url, htmlContent)
+    private def processHtmlContentCallback(url: String) = getAsyncCallback[Try[(Seq[PriceCrawlerAuction], Seq[PriceCrawlerAuction])]] {
+      case Success((auctions, alreadyRecorded)) if alreadyRecorded.length == auctions.length && auctions.nonEmpty =>
+        // TODO refactor with a completeStage() ????
+        Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContentCallback($url), all auctions ALREADY recorded, cancel(in) ...")
+        cancel(in)
+        // pushAllAuctionsAndComplete()
 
-      case Failure(f) =>
-        Logger.error(s"PriceCrawlerAuctionsGraphStage.getHtmlContentCB($url) Enable to get the htmlContent", f)
-        completeStage()
-    }
+      case Success((auctions, alreadyRecorded)) =>
+        val newAuctions = auctions.filterNot(auction => alreadyRecorded.exists(_.auctionId == auction.auctionId))
+        Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContentCallback($url), auctions#${auctions.length} already#${alreadyRecorded.length} newAuctions#${newAuctions.length} new auction(s) will be recorded ...")
 
-    /**
-      * Extract all the informations about auctions found in an html page and stops the graphStage if all
-      * the auctions are already processed OR no auctions were found.
-      *
-      * @param htmlContent The html page content from which to extract the auctions informations
-      * @return
-      */
-    def processHtmlContent(url: String, htmlContent: String): Unit = {
-      // TODO PriceCrawlerDCP depends on the website we are crawling
-      PriceCrawlerDCP.extractAuctions(htmlContent).map { auctions =>
-        priceCrawlerAuctionService.findMany(auctions).onComplete(processHtmlContentCB(url, auctions).invoke)
-      }.recover {
-        case NonFatal(e) =>
-          Logger.error("PriceCrawlerAuctionsGraphStage.processHtmlContent Error encountered", e)
-      }
-    }
-
-    private def processHtmlContentCB(url: String, auctions: Seq[PriceCrawlerAuction]) = getAsyncCallback[Try[Seq[PriceCrawlerAuction]]] {
-      case Success(alreadyRecorded) if alreadyRecorded.length == auctions.length && auctions.nonEmpty =>
-        Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContentCB($url), all auctions ALREADY recorded, completeStage() ...")
-        pushAllAuctionsAndComplete()
-
-      case Success(alreadyRecorded) =>
-        val newAuctions = auctions.diff(alreadyRecorded)
-        Logger.info(s"PriceCrawlerAuctionsGraphStage.processHtmlContentCB($url), ${newAuctions.length} new auction(s) will be recorded ...")
-
+        // Queue the new auctions
         priceCrawlerAuctions ++= newAuctions
 
-        priceCrawlerAuctionService
-          .createMany(newAuctions)
-          .recover {
-            case NonFatal(e) =>
-              Logger.error("PriceCrawlerAuctionsGraphStage.processHtmlContentCB persistence error", e)
-          }
-
-        pull(in)
+        // Push one auction
+        pushNextAuction()
 
       case Failure(f) =>
-        Logger.error(s"processHtmlContentCB.processHtmlContentCB($url) FAILURE, completeStage() ...", f)
+        // TODO refactor with a completeStage() ???
+        Logger.error(s"processHtmlContentCB.processHtmlContentCallback($url) FAILURE, completeStage() ...", f)
         pushAllAuctionsAndComplete()
     }
 
     /**
       *
+      * @return
       */
-    def pushNextAuction(): Unit = if (priceCrawlerAuctions.nonEmpty) {
+    def pushNextAuction(): Boolean = if (priceCrawlerAuctions.nonEmpty) {
       val nextAuction: PriceCrawlerAuction = priceCrawlerAuctions.dequeue
-      Logger.info(s"PriceCrawlerAuctionsGraphStage.pushNextAuction dequeue $nextAuction")
+      // Logger.debug(s"PriceCrawlerAuctionsGraphStage.pushNextAuction dequeue ${nextAuction.auctionId} remaining auctions ${priceCrawlerAuctions.size}")
       push(out, nextAuction)
+      true
     } else {
       Logger.info(s"PriceCrawlerAuctionsGraphStage.pushNextAuction empty queue")
+      false
     }
 
     /**
@@ -174,6 +159,19 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       priceCrawlerAuctions.foreach(push(out, _))
       cancel(in)
       // completeStage()
+    }
+
+    /**
+      *
+      */
+    def emitAllAuctions(): Unit = {
+      Logger.info(s"Remaining auctions in the queue to be emitted: ${priceCrawlerAuctions.size}")
+      emitMultiple(out, priceCrawlerAuctions.toIterator)
+    }
+
+    def doPullIn(from: String) = {
+      Logger.info(s"++++++++++++++++++++++++++++++++ pull(in) from $from")
+      pull(in)
     }
   }
 }
