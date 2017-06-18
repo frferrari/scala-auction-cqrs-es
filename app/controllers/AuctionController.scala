@@ -163,7 +163,7 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
       */
     val getHtmlContentFromBaseUrl: Flow[PriceCrawlerUrl, BasePriceCrawlerUrlWithHtmlContent, NotUsed] =
       Flow[PriceCrawlerUrl].mapAsync[BasePriceCrawlerUrlWithHtmlContent](numberOfUrlsProcessedInParallel) { priceCrawlerUrl =>
-        Logger.info(s"Processing website ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
+        Logger.info(s"Processing WEBSITE ${priceCrawlerUrl.website} url ${priceCrawlerUrl.url}")
 
         val htmlContentF: Future[String] = Http().singleRequest(HttpRequest(uri = priceCrawlerUrl.url)).flatMap {
           case res if res.status.isSuccess =>
@@ -253,13 +253,13 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     //      .runForeach(p4seq)
 
     val r = priceCrawlerUrlSource
-      .throttle(1, 20.seconds, 1, ThrottleMode.Shaping)
+      .throttle(1, imNotARobot(30, 30), 1, ThrottleMode.Shaping)
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
       .flatMapConcat(urls =>
         Source
           .fromIterator(() => urls.toIterator)
-          .throttle(1, 10.seconds, 1, ThrottleMode.Shaping)
+          .throttle(1, imNotARobot(10, 10), 1, ThrottleMode.Shaping)
           .via(priceCrawlerAuctionsFlow)
       )
       .map { auction =>
@@ -273,58 +273,19 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     Ok
   }
 
-  def p5(s: Seq[PriceCrawlerUrlContent]) = {
-    println(s"========================> ${s.map(_.url)}")
-    Thread.sleep(4000)
+  /**
+    *
+    * @param base
+    * @param range
+    * @return
+    */
+  def imNotARobot(base: Int, range: Int): FiniteDuration = {
+    val r = scala.util.Random
+    (base + r.nextInt(range)).seconds
   }
 
-  def p4seq2(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
-    val auctionIds = priceCrawlerAuctions.map(_.auctionId)
-    Logger.info(s"AuctionController.p4seq2 received ${auctionIds.length} auctionIds ************************")
-    // Thread.sleep(2000)
-  }
-
-  def p4seq(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
-    println(s"AuctionController.p4seq received auctionIds ================> ${priceCrawlerAuctions.map(_.auctionId)}")
-    Thread.sleep(2000)
-  }
-
-  def p4(priceCrawlerAuction: PriceCrawlerAuction) = {
+  def p4(priceCrawlerAuction: PriceCrawlerAuction): Unit = {
     // println(s"AuctionController.p4 received auctionId ================> ${priceCrawlerAuction.auctionId}")
     // Thread.sleep(50)
   }
-
-  /**
-    *
-    * @param s
-    */
-  def p3(s: Seq[PriceCrawlerAuction]) = {
-    println(s"========================> $s")
-    Thread.sleep(4000)
-  }
-
-  def p2(s: (BasePriceCrawlerUrlWithHtmlContent, Seq[String])) = {
-    println(s"${s._1._1.url} --> ${s._2}")
-    Thread.sleep(4000)
-  }
-
-  def p(url: PriceCrawlerUrl) = {
-    // Thread.sleep(5000)
-    println(url)
-  }
-
-  def getHtmlContent(url: String)(implicit system: ActorSystem, mat: ActorMaterializer): Future[String] = {
-    Logger.info(s"getHtmlContent($url)")
-
-    Http().singleRequest(HttpRequest(uri = url)).flatMap {
-      case res if res.status.isSuccess =>
-        Logger.info(s"getHtmlContent Success $url")
-        res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
-
-      case res =>
-        Logger.error(s"getHtmlContent Enable to access url $url error ${res.status}")
-        throw new ResourceUnavailable(s"Unable to access url $url error ${res.status}")
-    }
-  }
-
 }

@@ -34,23 +34,22 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
 
     setHandlers(in, out, new InHandler with OutHandler {
       override def onPush(): Unit = {
-        val nextUrlContent: PriceCrawlerUrlContent = grab(in)
 
-        nextUrlContent match {
+        grab(in) match {
           case PriceCrawlerUrlContent(url, Some(htmlContent)) =>
-            Logger.info(s"Processing URL ${nextUrlContent.url} w/htmlContent")
+            Logger.info(s"Processing URL $url w/htmlContent")
             (for {
               auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
-              alreadyRecorded <- priceCrawlerAuctionService.findMany(auctions)
-            } yield (auctions, alreadyRecorded)).onComplete(processHtmlContentCallback(url).invoke)
+              alreadyRecordedAuctions <- priceCrawlerAuctionService.findMany(auctions)
+            } yield (auctions, alreadyRecordedAuctions)).onComplete(processHtmlContentCallback(url).invoke)
 
-          case p@PriceCrawlerUrlContent(url, None) =>
-            Logger.info(s"Processing URL ${nextUrlContent.url} w/o htmlContent")
+          case PriceCrawlerUrlContent(url, None) =>
+            Logger.info(s"Processing URL $url w/o htmlContent")
             (for {
-              htmlContent <- getHtmlContent(p.url)
+              htmlContent <- getHtmlContent(url)
               auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
-              alreadyRecorded <- priceCrawlerAuctionService.findMany(auctions)
-            } yield (auctions, alreadyRecorded)).onComplete(processHtmlContentCallback(url).invoke)
+              alreadyRecordedAuctions <- priceCrawlerAuctionService.findMany(auctions)
+            } yield (auctions, alreadyRecordedAuctions)).onComplete(processHtmlContentCallback(url).invoke)
         }
       }
 
@@ -73,15 +72,15 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       * @return
       */
     def getHtmlContent(url: String): Future[String] = {
-      Logger.info(s"Fetching html from $url")
+      Logger.info(s"Fetching $url")
 
       Http().singleRequest(HttpRequest(uri = url)).flatMap {
         case res if res.status.isSuccess =>
           res.entity.dataBytes.runFold(ByteString(""))(_ ++ _).map(_.utf8String)
 
         case res =>
-          Logger.error(s"Error fetching html from $url status ${res.status}")
-          throw new ResourceUnavailable(s"Error fetching html from $url status ${res.status}")
+          Logger.error(s"Error fetching $url status ${res.status}")
+          throw new ResourceUnavailable(s"Error fetching $url status ${res.status}")
       }
     }
 
@@ -95,8 +94,9 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       case Success((auctions, alreadyRecordedAuctions)) if alreadyRecordedAuctions.length == auctions.length && auctions.nonEmpty =>
         Logger.info(s"All the auctions are ALREADY recorded for $url")
 
-        // All auctions are already recorded for the upstream url (page 1, page 2, page 3, ..., page N).
-        // So we cancel the remaining pages that are already in the upstream as we don't need to process them.
+        // All auctions are already recorded for the current url, so we don't need to process
+        // this url next pages (page n+1, page n+2, page n+3, ...)
+        // So we cancel the upstream thus putting the unprocessed urls to the bin.
         cancel(in)
 
         // To complete the stage in a clean way, we complete the downstream ONLY if there's NO remaining
@@ -150,9 +150,9 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
     }
 
     /**
-      *
-      * @param auctions
-      * @param alreadyRecordedAuctions
+      * Get a list of elements from the "auctions" list that are not in the "alreadyRecordedAuctions" list
+      * @param auctions A list of auctions eventually containing new auctions
+      * @param alreadyRecordedAuctions The auctions from the "auctions" list that are already recorded in mongodb
       * @return
       */
     def getNewAuctions(auctions: Seq[PriceCrawlerAuction], alreadyRecordedAuctions: Seq[PriceCrawlerAuction]): Seq[PriceCrawlerAuction] = {
