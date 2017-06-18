@@ -35,7 +35,7 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
   val auctionIdRegex =
     """item-([0-9]+)""".r
 
-  override def extractAuctions(htmlContent: String): Future[Seq[PriceCrawlerAuction]] = Future {
+  override def extractAuctions(website: String, htmlContent: String): Future[Seq[PriceCrawlerAuction]] = Future {
     @tailrec def extractAuction(elementsIterator: util.Iterator[Element], priceCrawlerAuctions: Seq[PriceCrawlerAuction] = Nil): Seq[PriceCrawlerAuction] = {
       elementsIterator.hasNext match {
         case true =>
@@ -68,7 +68,7 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
             ) {
               getItemPrice(itemPrice) match {
                 case Success(priceCrawlerItemPrice) =>
-                  extractAuction(elementsIterator, priceCrawlerAuctions :+ PriceCrawlerAuction(auctionId, auctionUrl, auctionTitle, thumbUrl, largeUrl, priceCrawlerItemPrice))
+                  extractAuction(elementsIterator, priceCrawlerAuctions :+ PriceCrawlerAuction(auctionId, website, auctionUrl, auctionTitle, thumbUrl, largeUrl, priceCrawlerItemPrice))
 
                 case Failure(_) =>
                   extractAuction(elementsIterator, priceCrawlerAuctions)

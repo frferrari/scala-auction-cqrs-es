@@ -8,3 +8,7 @@ case class PriceCrawlerWebsite(name: String,
                                defaultUrlParameters: Seq[String]
                                // created_at: Instant
                               )
+
+object PriceCrawlerWebsite {
+  val DCP = "DCP"
+}

@@ -36,18 +36,18 @@ class PriceCrawlerAuctionsGraphStage @Inject()(implicit val priceCrawlerUrlServi
       override def onPush(): Unit = {
 
         grab(in) match {
-          case PriceCrawlerUrlContent(url, Some(htmlContent)) =>
-            Logger.info(s"Processing URL $url w/htmlContent")
+          case PriceCrawlerUrlContent(PriceCrawlerUrl(website, url), Some(htmlContent)) =>
+            Logger.info(s"Processing WEBSITE $website URL $url w/htmlContent")
             (for {
-              auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
+              auctions <- PriceCrawlerDCP.extractAuctions(website, htmlContent)
               alreadyRecordedAuctions <- priceCrawlerAuctionService.findMany(auctions)
             } yield (auctions, alreadyRecordedAuctions)).onComplete(processHtmlContentCallback(url).invoke)
 
-          case PriceCrawlerUrlContent(url, None) =>
-            Logger.info(s"Processing URL $url w/o htmlContent")
+          case PriceCrawlerUrlContent(PriceCrawlerUrl(website, url), None) =>
+            Logger.info(s"Processing WEBSITE $website URL $url w/o htmlContent")
             (for {
               htmlContent <- getHtmlContent(url)
-              auctions <- PriceCrawlerDCP.extractAuctions(htmlContent)
+              auctions <- PriceCrawlerDCP.extractAuctions(website, htmlContent)
               alreadyRecordedAuctions <- priceCrawlerAuctionService.findMany(auctions)
             } yield (auctions, alreadyRecordedAuctions)).onComplete(processHtmlContentCallback(url).invoke)
         }
