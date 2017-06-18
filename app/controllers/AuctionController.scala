@@ -23,6 +23,7 @@ import priceCrawler._
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 
 /**
   * Created by Francois FERRARI on 31/05/2017
@@ -207,7 +208,8 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     val priceCrawlerAuctionsGraphStage: PriceCrawlerAuctionsGraphStage = new PriceCrawlerAuctionsGraphStage
     val priceCrawlerAuctionsFlow: Flow[PriceCrawlerUrlContent, PriceCrawlerAuction, NotUsed] = Flow.fromGraph(priceCrawlerAuctionsGraphStage)
 
-    // This code allows to do the same thing as the PriceCrawlerAuctionsGraphStage
+    //
+    // This code allows to do nearly the same thing as the PriceCrawlerAuctionsGraphStage
     //
     //    val t = priceCrawlerUrlSource
     //      .via(getHtmlContentFromBaseUrl)
@@ -251,17 +253,22 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     //      .runForeach(p4seq)
 
     val r = priceCrawlerUrlSource
+      .throttle(1, 20.seconds, 1, ThrottleMode.Shaping)
       .via(getHtmlContentFromBaseUrl)
       .via(generatePagedUrlsFromBaseUrl)
       .flatMapConcat(urls =>
         Source
           .fromIterator(() => urls.toIterator)
-          // .throttle(1, 2.minutes, 0, ThrottleMode.enforcing)
+          .throttle(1, 10.seconds, 1, ThrottleMode.Shaping)
           .via(priceCrawlerAuctionsFlow)
       )
-      .map { auction => priceCrawlerAuctionService.createOne(auction); auction }
-        .groupedWithin(120, 120.seconds)
-      .runForeach(p4seq2)
+      .map { auction =>
+        priceCrawlerAuctionService.createOne(auction).recover {
+          case NonFatal(e) => Logger.error("MongoDB persistence error", e)
+        }
+        auction
+      }
+      .runForeach(p4)
 
     Ok
   }
@@ -274,7 +281,7 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
   def p4seq2(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
     val auctionIds = priceCrawlerAuctions.map(_.auctionId)
     Logger.info(s"AuctionController.p4seq2 received ${auctionIds.length} auctionIds ************************")
-    Thread.sleep(2000)
+    // Thread.sleep(2000)
   }
 
   def p4seq(priceCrawlerAuctions: Seq[PriceCrawlerAuction]) = {
@@ -283,9 +290,8 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
   }
 
   def p4(priceCrawlerAuction: PriceCrawlerAuction) = {
-    println(s"AuctionController.p4 received auctionId ================> ${priceCrawlerAuction.auctionId}")
-    // Thread.sleep(2000)
-    Thread.sleep(50)
+    // println(s"AuctionController.p4 received auctionId ================> ${priceCrawlerAuction.auctionId}")
+    // Thread.sleep(50)
   }
 
   /**
