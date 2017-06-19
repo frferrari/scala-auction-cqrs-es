@@ -1,8 +1,5 @@
 package priceCrawler
 
-import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
-import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
-import org.mongodb.scala.bson.codecs.Macros._
 import org.mongodb.scala.model.Filters._
 import org.mongodb.scala.{Completed, MongoClient, MongoDatabase, _}
 
@@ -16,15 +13,13 @@ class PriceCrawlerAuctionService {
   val database: MongoDatabase = mongoClient.getDatabase("andycot")
 
   /*
-   * !!! IMPORTANT !!!
    *
-   * The order in which the classOf clauses appear is important,
-   * so we must first list inner classes then outer classes, otherwise
-   * a collection.find won't work, arghhhhhhhhhhhhhhhh
    */
-  val codecRegistry = fromRegistries(fromProviders(classOf[PriceCrawlerItemPrice], classOf[PriceCrawlerAuction]), DEFAULT_CODEC_REGISTRY)
-  val collection = database.getCollection[PriceCrawlerAuction]("priceCrawlerAuctions").withCodecRegistry(codecRegistry)
-  collection.createIndex(Document("auctionId" -> 1, "unique" -> true))
+  val collection: MongoCollection[PriceCrawlerAuction] = database
+    .getCollection[PriceCrawlerAuction]("priceCrawlerAuctions")
+    .withCodecRegistry(MongoCodec.getCodecRegistry)
+
+  // TODO add an index --- collection.createIndex(Document("auctionId" -> 1, "unique" -> true))
 
   /**
     *
@@ -44,6 +39,6 @@ class PriceCrawlerAuctionService {
   def findMany(priceCrawlerAuctions: Seq[PriceCrawlerAuction]): Future[Seq[PriceCrawlerAuction]] = {
     val auctionIds = priceCrawlerAuctions.map(_.auctionId)
 
-    collection.find(in("auctionId", auctionIds:_*)).toFuture()
+    collection.find(in("auctionId", auctionIds: _*)).toFuture()
   }
 }

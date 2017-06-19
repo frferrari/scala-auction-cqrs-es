@@ -1,9 +1,8 @@
 package priceCrawler
 
-import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
-import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
-import org.mongodb.scala.bson.codecs.Macros._
-import org.mongodb.scala.{MongoClient, MongoDatabase}
+import org.mongodb.scala.{MongoClient, MongoCollection, MongoDatabase}
+
+import scala.concurrent.Future
 
 /**
   * Created by Francois FERRARI on 10/06/2017
@@ -12,14 +11,15 @@ class PriceCrawlerUrlService {
   val mongoClient: MongoClient = MongoClient()
   val database: MongoDatabase = mongoClient.getDatabase("andycot")
 
-  val codecRegistry = fromRegistries(fromProviders(classOf[PriceCrawlerUrl]), DEFAULT_CODEC_REGISTRY)
-  val collection = database.getCollection[PriceCrawlerUrl]("priceCrawlerUrls").withCodecRegistry(codecRegistry)
+  val collection: MongoCollection[PriceCrawlerUrl] = database
+    .getCollection[PriceCrawlerUrl]("priceCrawlerUrls")
+    .withCodecRegistry(MongoCodec.getCodecRegistry)
 
   /**
     *
     * @return
     */
-  def findPriceCrawlerUrls = collection.find().toFuture()
+  def findPriceCrawlerUrls: Future[Seq[PriceCrawlerUrl]] = collection.find().toFuture()
 
   /**
     * Generate a list of urls given a base url and the max page number.
@@ -37,11 +37,4 @@ class PriceCrawlerUrlService {
 
     (1 to maxPageNumber).map(generateUrl(priceCrawlerBaseUrl)).toList
   }
-
-  /**
-    *
-    * @param auctionIds
-    * @return
-    */
-  def auctionsAlreadyRecorded(auctionIds: Seq[PriceCrawlerAuction]): Seq[PriceCrawlerAuction] = Nil
 }

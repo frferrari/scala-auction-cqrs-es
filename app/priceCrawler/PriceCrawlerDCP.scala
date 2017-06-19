@@ -119,7 +119,7 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
     mapToInternalCurrency(externalCurrency) match {
       case Some(internalCurrency) =>
         // An external price is a string like "120,00" or "4 950,00"
-        PriceCrawlerItemPrice(price.replace(",", ".").replace(" ", ""), internalCurrency)
+        PriceCrawlerItemPrice(BigDecimal(price.replace(",", ".").replace(" ", "")), internalCurrency)
 
       case _ =>
         Logger.error(s"PriceCrawlerDCP.getItemPrice Couldn't parse currency $externalCurrency")

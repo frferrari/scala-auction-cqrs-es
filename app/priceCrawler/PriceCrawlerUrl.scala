@@ -1,5 +1,6 @@
 package priceCrawler
 
+import org.bson.codecs.configuration.CodecProvider
 import org.mongodb.scala.bson.codecs.Macros
 
 /**
@@ -8,5 +9,5 @@ import org.mongodb.scala.bson.codecs.Macros
 case class PriceCrawlerUrl(website: String, url: String)
 
 object PriceCrawlerUrl {
-  val priceCrawlerUrlCodec = Macros.createCodecProvider[PriceCrawlerUrl]
+  val mongoCodec: CodecProvider = Macros.createCodecProvider[PriceCrawlerUrl]()
 }
