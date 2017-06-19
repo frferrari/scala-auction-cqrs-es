@@ -9,7 +9,7 @@ import scala.util.Try
 trait PriceCrawlerExtractor {
   def extractAuctions(website: String, htmlContent: String): Future[Seq[PriceCrawlerAuction]]
 
-  def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): List[String]
+  def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, priceCrawlerWebsites: Seq[PriceCrawlerWebsite], htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): Seq[String]
 
   def getItemPrice(priceWithCurrency: String): Try[PriceCrawlerItemPrice]
 

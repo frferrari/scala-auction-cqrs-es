@@ -32,6 +32,7 @@ import scala.util.control.NonFatal
 class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActorRef: ActorRef)
                                  (implicit priceCrawlerUrlService: PriceCrawlerUrlService,
                                   priceCrawlerAuctionService: PriceCrawlerAuctionService,
+                                  priceCrawlerWebsiteService: PriceCrawlerWebsiteService,
                                   ec: ExecutionContext)
   extends Controller {
 
@@ -185,11 +186,11 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
       * ...
       * http://www.andycot.fr/...&page=26
       */
-    val generatePagedUrlsFromBaseUrl: Flow[BasePriceCrawlerUrlWithHtmlContent, Seq[PriceCrawlerUrlContent], NotUsed] =
+    def generatePagedUrlsFromBaseUrl(priceCrawlerWebsites: Seq[PriceCrawlerWebsite]): Flow[BasePriceCrawlerUrlWithHtmlContent, Seq[PriceCrawlerUrlContent], NotUsed] =
       Flow[BasePriceCrawlerUrlWithHtmlContent].map {
         // TODO other case ...
         case (priceCrawlerUrl, htmlContent) if priceCrawlerUrl.website == PriceCrawlerWebsite.DCP =>
-          val priceCrawlerUrlContents = PriceCrawlerDCP.getPagedUrls(priceCrawlerUrl, htmlContent).foldLeft(Seq.empty[PriceCrawlerUrlContent]) {
+          val priceCrawlerUrlContents = PriceCrawlerDCP.getPagedUrls(priceCrawlerUrl, priceCrawlerWebsites, htmlContent).foldLeft(Seq.empty[PriceCrawlerUrlContent]) {
             case (acc, url) if acc.isEmpty =>
               acc :+ PriceCrawlerUrlContent(priceCrawlerUrl.copy(url = url), Some(htmlContent))
 
@@ -253,23 +254,28 @@ class AuctionController @Inject()(@Named(UserUnicityActor.name) userUnicityActor
     //      }
     //      .runForeach(p4seq)
 
-    val r = priceCrawlerUrlSource
-      .throttle(1, imNotARobot(30, 30), 1, ThrottleMode.Shaping)
-      .via(getHtmlContentFromBaseUrl)
-      .via(generatePagedUrlsFromBaseUrl)
-      .flatMapConcat(urls =>
-        Source
-          .fromIterator(() => urls.toIterator)
-          .throttle(1, imNotARobot(10, 10), 1, ThrottleMode.Shaping)
-          .via(priceCrawlerAuctionsFlow)
-      )
-      .map { auction =>
-        priceCrawlerAuctionService.createOne(auction).recover {
-          case NonFatal(e) => Logger.error("MongoDB persistence error", e)
+    priceCrawlerWebsiteService.findAll.map { priceCrawlerWebsites =>
+      priceCrawlerUrlSource
+        .throttle(1, imNotARobot(30, 30), 1, ThrottleMode.Shaping)
+        .via(getHtmlContentFromBaseUrl)
+        .via(generatePagedUrlsFromBaseUrl(priceCrawlerWebsites))
+        .flatMapConcat(urls =>
+          Source
+            .fromIterator(() => urls.toIterator)
+            .throttle(1, imNotARobot(10, 10), 1, ThrottleMode.Shaping)
+            .via(priceCrawlerAuctionsFlow)
+        )
+        .map { auction =>
+          priceCrawlerAuctionService.createOne(auction).recover {
+            case NonFatal(e) => Logger.error("MongoDB persistence error", e)
+          }
+          auction
         }
-        auction
-      }
-      .runForeach(p4)
+        .runForeach(p4)
+    }.recover {
+      case NonFatal(e) =>
+        Logger.error("Error reading website parameters", e)
+    }
 
     Ok
   }

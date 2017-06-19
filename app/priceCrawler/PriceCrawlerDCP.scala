@@ -7,7 +7,6 @@ import org.jsoup.nodes.Element
 import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.collection.immutable.Seq
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
@@ -90,20 +89,22 @@ object PriceCrawlerDCP extends PriceCrawlerExtractor {
   /**
     *
     * @param priceCrawlerUrl
+    * @param priceCrawlerWebsites
     * @param htmlContent
     * @param priceCrawlerUrlService
     * @return
     */
-  override def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, htmlContent: String)(implicit priceCrawlerUrlService: PriceCrawlerUrlService): List[String] = {
+  override def getPagedUrls(priceCrawlerUrl: PriceCrawlerUrl, priceCrawlerWebsites: Seq[PriceCrawlerWebsite], htmlContent: String)
+                           (implicit priceCrawlerUrlService: PriceCrawlerUrlService): Seq[String] = {
     val pageNumberRegex = """.*<a class="pag-number.*" href=".*">([0-9]+)</a>.*""".r
 
     pageNumberRegex.findAllIn(htmlContent).matchData.flatMap(_.subgroups).toList.lastOption match {
       case Some(lastPageNumber) =>
-        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, lastPageNumber.toInt)
+        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, priceCrawlerWebsites, lastPageNumber.toInt)
 
       case None =>
         // Case when there's only one page of auctions for this category
-        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, 1)
+        priceCrawlerUrlService.generateAllUrls(priceCrawlerUrl, priceCrawlerWebsites, 1)
     }
   }
 

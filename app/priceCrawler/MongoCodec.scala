@@ -18,6 +18,7 @@ object MongoCodec {
     PriceCrawlerItemPrice.mongoCodec,
     PriceCrawlerAuction.mongoCodec,
     PriceCrawlerUrl.mongoCodec,
+    PriceCrawlerWebsiteParameter.mongoCodec,
     PriceCrawlerWebsite.mongoCodec
   )
 

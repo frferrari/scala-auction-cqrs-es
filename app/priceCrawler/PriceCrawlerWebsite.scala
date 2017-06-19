@@ -8,9 +8,9 @@ import org.mongodb.scala.bson.codecs.Macros
 /**
   * Created by Francois FERRARI on 12/06/2017
   */
-case class PriceCrawlerWebsite(name: String,
+case class PriceCrawlerWebsite(website: String,
                                baseUrl: String,
-                               defaultUrlParameters: Seq[String],
+                               defaultUrlParameters: Seq[PriceCrawlerWebsiteParameter],
                                created_at: Instant = Instant.now()
                               )
 
