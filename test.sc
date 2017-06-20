@@ -1,7 +1,3 @@
-import org.mongodb.scala._
-import org.mongodb.scala.model.Filters._
-import priceCrawler.PriceCrawlerAuctionService
-
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 

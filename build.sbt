@@ -36,17 +36,7 @@ libraryDependencies ++= Seq(
   "org.scalatestplus.play" %% "scalatestplus-play" % "2.0.0" % Test,
   "com.typesafe.akka" %% "akka-persistence" % "2.5.2",
   "com.github.dnvriend" %% "akka-persistence-inmemory" % "1.3.7",
-  "com.typesafe.play" %% "anorm" % "2.5.3" withSources(),
-
-  // MongoDB
-  "org.mongodb.scala" %% "mongo-scala-driver" % "2.1.0",
-
-  // streams
-  "com.typesafe.akka" %% "akka-stream" % "2.5.2",
-  // akka http
-  "com.typesafe.akka" %% "akka-http" % "10.0.7",
-
-  "org.jsoup" % "jsoup" % "1.6.1"
+  "com.typesafe.play" %% "anorm" % "2.5.3" withSources()
   // "com.okumin" %% "akka-persistence-sql-async" % "0.4.0",
   // "com.github.mauricio" %% "mysql-async" % "0.2.20"
 )
